@@ -55,7 +55,7 @@ export function matchesExcluded(target, patterns, pathApi) {
   };
   for (const pattern of patterns ?? []) {
     const full = /[/\\]/.test(pattern);
-    for (let current = pathApi.resolve(target); ; ) {
+    for (let current = pathApi.resolve(target); ;) {
       const candidate = full ? current : pathApi.basename(current);
       if (matchesGlob(normalize(candidate), normalize(pattern))) {
         return true;
