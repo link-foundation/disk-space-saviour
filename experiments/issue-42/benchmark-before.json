@@ -1,0 +1,24 @@
+{
+  "source": "origin/main",
+  "runtime": "v26.11.1",
+  "platform": "linux",
+  "fixture": "32 projects, 4416 regular files, 4.25 MiB logical payload",
+  "results": [
+    {
+      "label": "cold scan",
+      "milliseconds": 959
+    },
+    {
+      "label": "warm scan",
+      "milliseconds": 975
+    },
+    {
+      "label": "dry clean serialized plan",
+      "milliseconds": 1199
+    }
+  ],
+  "candidates": 34,
+  "planned": 34,
+  "wholeProjectSizes": 96,
+  "warmMetrics": null
+}
