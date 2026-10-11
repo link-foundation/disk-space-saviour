@@ -65,6 +65,14 @@ function ruleAccepts(env, rule, candidate, selfListing, grandListing) {
  * Pairs every found directory with the first rule it satisfies (or null).
  */
 async function matchRules(env, found, rules) {
+  // Refresh markers and activity; the discovery index only supplies hints.
+  const parents = await listMany(env, [
+    ...new Set(found.map((candidate) => candidate.parent)),
+  ]);
+  found = found.map((candidate) => ({
+    ...candidate,
+    siblings: parents.get(candidate.parent) ?? [],
+  }));
   const options = found.map((candidate) => ({
     candidate,
     rules: rules.filter((rule) =>
@@ -116,6 +124,11 @@ async function rootCandidates(env, roots) {
   return candidates;
 }
 
+async function indexedMatches(env, roots, globs, maxDepth, rules) {
+  const candidates = (await env.indexedDirs?.(roots, globs, maxDepth)) ?? [];
+  return matchRules(env, candidates, rules);
+}
+
 /**
  * Finds every rule match below the roots.
  * @returns {Promise<Array<{candidate: object, rule: object}>>}
@@ -125,18 +138,34 @@ export async function findProjectDirs(env, roots, options = {}) {
   const maxDepth = options.maxDepth ?? 6;
   const globs = [...new Set(rules.flatMap((rule) => rule.names))];
   const matches = [];
+  const seen = new Set();
+  const accept = (match) => {
+    if (!match.rule || seen.has(match.candidate.path)) {
+      return;
+    }
+    seen.add(match.candidate.path);
+    matches.push(match);
+    return match;
+  };
+  const indexed = await indexedMatches(env, roots, globs, maxDepth, rules);
+  await options.onMatches?.(indexed.map(accept).filter(Boolean));
   if (options.includeRoots) {
     const self = await matchRules(env, await rootCandidates(env, roots), rules);
-    matches.push(...self.filter((match) => match.rule));
+    const accepted = self.map(accept).filter(Boolean);
+    await options.onMatches?.(accepted);
   }
   let frontier = new Map([[maxDepth, roots]]);
   while (frontier.size > 0) {
     const next = new Map();
     for (const [depth, dirs] of frontier) {
       const found = await env.findDirs(dirs, { globs, maxDepth: depth });
+      const accepted = [];
       for (const match of await matchRules(env, found, rules)) {
         if (match.rule) {
-          matches.push(match);
+          const fresh = accept(match);
+          if (fresh) {
+            accepted.push(fresh);
+          }
           continue;
         }
         const remaining = depth - depthBelow(env, dirs, match.candidate.path);
@@ -147,6 +176,7 @@ export async function findProjectDirs(env, roots, options = {}) {
           ]);
         }
       }
+      await options.onMatches?.(accepted);
     }
     frontier = next;
   }
@@ -180,6 +210,29 @@ function projectTier(context, rule, lastActivityMs) {
   };
 }
 
+/** Re-evaluate activity before cleaning a reused project plan. */
+export async function currentProjectTier(context, item) {
+  const rule = PROJECT_RULES.find((entry) => entry.id === item.rule);
+  if (!rule || rule.kind === 'cache') {
+    return item.tier;
+  }
+  const globs = [...new Set(PROJECT_RULES.flatMap((entry) => entry.names))];
+  const parent = context.env.path.dirname(item.path);
+  const candidate = {
+    name: context.env.path.basename(item.path),
+    siblings: await context.env.list(parent),
+  };
+  context.git.invalidate();
+  const activity = await projectActivity(
+    context,
+    item.project,
+    candidate,
+    { newestMtimeMs: item.newestMtimeMs },
+    globs
+  );
+  return projectTier(context, rule, activity).tier;
+}
+
 async function addBlockers(context, item, requireClean) {
   for (const reason of await context.git.pathBlockers(item.path, {
     requireClean,
@@ -198,12 +251,21 @@ async function projectActivity(context, project, candidate, usage, globs) {
   const lastCommitMs = repo ? (await git.repoState(repo)).lastCommitMs : 0;
   context.projectUsage ??= new Map();
   if (!context.projectUsage.has(project)) {
-    context.projectUsage.set(project, await env.usage(project));
+    context.projectUsage.set(
+      project,
+      env.projectActivity
+        ? await env.projectActivity(
+            project,
+            globs,
+            context.now - context.options.inactiveMs
+          )
+        : (await env.usage(project))?.newestMtimeMs
+    );
   }
   const projectUsage = context.projectUsage.get(project);
   return Math.max(
     usage?.newestMtimeMs ?? 0,
-    projectUsage?.newestMtimeMs ?? 0,
+    projectUsage ?? 0,
     siblingActivity(candidate, globs),
     lastCommitMs
   );
@@ -228,6 +290,7 @@ async function projectItem(context, { candidate, rule }, usage, globs) {
     description: `${ECOSYSTEM_NAMES.get(rule.ecosystem)} ${rule.description}`,
     path: candidate.path,
     bytes: usage?.bytes ?? 0,
+    sizeEstimated: Boolean(usage?.estimated),
     newestMtimeMs: usage?.newestMtimeMs ?? 0,
     lastActivityMs,
     project,
@@ -264,7 +327,7 @@ async function rustItems(context, targetItem, rule) {
   const { env, liveness, options, now } = context;
   const items = scanItems(context);
   const semverPath = env.path.join(targetItem.path, 'semver-checks');
-  const semverUsage = await env.usage(semverPath);
+  const semverUsage = await env.usage(semverPath, { cache: true });
   if (semverUsage) {
     const semver = makeItem(env, {
       rule: 'cargo-semver-checks-cache',
@@ -273,6 +336,7 @@ async function rustItems(context, targetItem, rule) {
       description: 'cargo-semver-checks baseline builds',
       path: semverPath,
       bytes: semverUsage.bytes,
+      sizeEstimated: Boolean(semverUsage.estimated),
       newestMtimeMs: semverUsage.newestMtimeMs,
       project: targetItem.project,
       parentId: targetItem.id,
@@ -333,24 +397,29 @@ async function rustItems(context, targetItem, rule) {
  */
 export async function scanProjects(context, { rules = PROJECT_RULES } = {}) {
   const { env, options } = context;
-  const matches = await findProjectDirs(env, options.roots, {
+  const globs = [...new Set(rules.flatMap((rule) => rule.names))];
+  const items = scanItems(context);
+  await findProjectDirs(env, options.roots, {
     rules,
     maxDepth: options.maxDepth,
     includeRoots: options.includeRoots,
+    onMatches: async (matches) => {
+      const usages = await env.usageMany(
+        matches.map((match) => match.candidate.path),
+        { cache: true }
+      );
+      for (const match of matches) {
+        const usage = usages.get(match.candidate.path);
+        if (!usage) {
+          continue;
+        }
+        const item = await projectItem(context, match, usage, globs);
+        items.push(item);
+        if (match.rule.id === 'cargo-target') {
+          items.push(...(await rustItems(context, item, match.rule)));
+        }
+      }
+    },
   });
-  const usages = await env.usageMany(matches.map((m) => m.candidate.path));
-  const globs = [...new Set(rules.flatMap((rule) => rule.names))];
-  const items = scanItems(context);
-  for (const match of matches) {
-    const usage = usages.get(match.candidate.path);
-    if (!usage) {
-      continue;
-    }
-    const item = await projectItem(context, match, usage, globs);
-    items.push(item);
-    if (match.rule.id === 'cargo-target') {
-      items.push(...(await rustItems(context, item, match.rule)));
-    }
-  }
   return items;
 }

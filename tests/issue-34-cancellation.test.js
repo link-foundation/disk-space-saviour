@@ -99,7 +99,7 @@ describe('issue 34 cancellation and scan budgets', () => {
             './experiments/issue-40/slow-scanner.mjs',
             'bin/dss.js',
             command,
-            ...(command === 'emergency' ? ['--free', '1G'] : []),
+            ...(command === 'emergency' ? ['--free', '999T'] : []),
             '--no-docker',
             '--scanner',
             'global',

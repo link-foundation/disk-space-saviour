@@ -24,6 +24,14 @@ import { scanGlobal } from './scanners/global.js';
 import { scanProjects } from './scanners/projects.js';
 import { scanSystem } from './scanners/system.js';
 import { scanVersions } from './scanners/versions.js';
+import { readSwap } from './swap.js';
+import {
+  authenticateReport,
+  authenticatedReport,
+  saveScan,
+  ScanIndex,
+  scopeKey,
+} from './scan-state.js';
 
 export const SCANNERS = {
   projects: scanProjects,
@@ -76,20 +84,47 @@ function sealReport(report) {
   return report;
 }
 
+function unchangedDiscoveryScope(report, input) {
+  const original = resolveOptions(report.options);
+  const overrides = Object.fromEntries(
+    Object.entries(input).filter(
+      ([name, value]) =>
+        RESCAN_OPTIONS.has(name) && value !== undefined && value !== null
+    )
+  );
+  return (
+    scopeKey(original) ===
+    scopeKey(resolveOptions({ ...original, ...overrides }))
+  );
+}
+
 /** Rebuild scanner-derived actions when a report came from JSON or changed. */
 export async function revalidateReport(saved, input = {}) {
   if (trustedReports.get(saved) === safetySnapshot(saved)) {
     return saved;
   }
-  const scope = {
-    roots: saved.options?.roots,
-    scanners: saved.options?.scanners,
-    containers: saved.options?.containers,
-    host: saved.options?.host,
-    docker: saved.options?.docker,
-    dockerDepth: saved.options?.dockerDepth,
-    maxDepth: saved.options?.maxDepth,
-  };
+  saved = saved.report?.schema === REPORT_SCHEMA ? saved.report : saved;
+  if (
+    unchangedDiscoveryScope(saved, input) &&
+    (await authenticatedReport(
+      saved,
+      input.cacheDir,
+      input.now?.() ?? Date.now()
+    ))
+  ) {
+    return sealReport(saved);
+  }
+  const scope = Object.fromEntries(
+    [
+      'roots',
+      'scanners',
+      'containers',
+      'host',
+      'docker',
+      'dockerDepth',
+      'maxDepth',
+    ].map((name) => [name, saved.options?.[name]])
+  );
   for (const [key, value] of Object.entries(input)) {
     if (RESCAN_OPTIONS.has(key) && value !== undefined && value !== null) {
       scope[key] = value;
@@ -172,6 +207,7 @@ export async function scanEnvironment(env, options, extra = {}) {
     options.scanBudgetMs
   );
   const found = new Map();
+  const completed = new Set();
   let scanner = 'context';
   const progress = () =>
     options.onScanProgress?.({
@@ -179,6 +215,11 @@ export async function scanEnvironment(env, options, extra = {}) {
       scanner,
       elapsedMs: Date.now() - started,
       items: found.size,
+      candidates: found.size,
+      filesSized: env.scanMetrics?.filesSized ?? 0,
+      directoriesSized: env.scanMetrics?.directoriesSized ?? 0,
+      indexHits: env.scanMetrics?.indexHits ?? 0,
+      sizeCacheHits: env.scanMetrics?.sizeCacheHits ?? 0,
       status: env.scanStatus,
     });
   env.scanStatus = 'scanning';
@@ -189,10 +230,17 @@ export async function scanEnvironment(env, options, extra = {}) {
       controller.signal,
       () => {
         progress();
-        return scanEnvironmentScoped(env, options, extra, found, (name) => {
-          scanner = name;
-          progress();
-        });
+        return scanEnvironmentScoped(
+          env,
+          options,
+          extra,
+          found,
+          completed,
+          (name) => {
+            scanner = name;
+            progress();
+          }
+        );
       },
       deadline
     );
@@ -205,7 +253,9 @@ export async function scanEnvironment(env, options, extra = {}) {
     (extra.errors ?? []).push({ env: env.id, scanner, message: error.message });
     const items = [...found.values()];
     for (const item of items) {
-      block(item, `scan incomplete: ${error.message}`);
+      if (options.signal?.aborted || !completed.has(item.id)) {
+        block(item, `scan incomplete: ${error.message}`);
+      }
     }
     return items;
   } finally {
@@ -216,13 +266,54 @@ export async function scanEnvironment(env, options, extra = {}) {
   }
 }
 
-async function scanEnvironmentScoped(env, options, extra, found, stage) {
+async function scanEnvironmentScoped(
+  env,
+  options,
+  extra,
+  found,
+  completed,
+  stage
+) {
   const errors = extra.errors ?? [];
   const context = await environmentContext(env, options, extra);
   context.emit = (item) => found.set(item.id, item);
+  let stopped = false;
+  const ready = async (items) => {
+    await attributeStorage(env, items);
+    for (const item of items) {
+      for (const target of item.paths) {
+        block(item, env.scanPolicy.removalReason(target));
+      }
+      completed.add(item.id);
+    }
+    if (
+      env.kind === 'host' &&
+      context.scanner === 'global' &&
+      options.onScanPhase
+    ) {
+      const result = await options.onScanPhase(
+        sealReport({
+          schema: REPORT_SCHEMA,
+          tool: 'disk-space-saviour',
+          createdAt: new Date(options.now()).toISOString(),
+          host: { env: env.id, label: env.label, platform: env.platform },
+          options: reportOptions(options),
+          environments: [envDescriptor(env, 0, [])],
+          items: filterItems(items, options, [], env.path),
+          totals: tierTotals(items),
+          errors: [],
+          docker: null,
+        })
+      );
+      stopped ||= result === false;
+    }
+    return !stopped;
+  };
+  context.ready = ready;
   let incomplete = false;
   for (const name of options.scanners) {
     checkSignal(env.signal);
+    context.scanner = name;
     stage(name);
     const scanner = SCANNERS[name];
     if (!scanner) {
@@ -237,21 +328,25 @@ async function scanEnvironmentScoped(env, options, extra, found, stage) {
       for (const item of entries) {
         context.emit(item);
       }
+      await ready(entries.filter((item) => !completed.has(item.id)));
     } catch (error) {
       checkSignal(env.signal);
       incomplete = true;
       for (const [id, item] of found) {
-        if (!previous.has(id)) {
+        if (![previous, completed].some((set) => set.has(id))) {
           block(item, `scan incomplete: ${error.message}`);
         }
       }
       errors.push({ env: env.id, scanner: name, message: error.message });
     }
     trace('scanner', name, 'in', env.id, `${Date.now() - started}ms`);
+    if (stopped) {
+      env.scanStatus = 'goal-reached';
+      return [...found.values()];
+    }
   }
   stage('storage');
   const items = [...found.values()];
-  await attributeStorage(env, items);
   for (const item of items) {
     for (const target of item.paths) {
       block(item, env.scanPolicy.removalReason(target));
@@ -391,7 +486,11 @@ function envDescriptor(env, depth, chain) {
 async function withDisk(env, descriptor) {
   const target = env.platform === 'win32' ? env.currentHome : '/';
   const disk = await env.diskUsage(target).catch(() => null);
-  return { ...descriptor, disk: disk ? { path: target, ...disk } : null };
+  return {
+    ...descriptor,
+    disk: disk ? { path: target, ...disk } : null,
+    swap: await readSwap(env),
+  };
 }
 
 async function dockerSection(env, options, errors) {
@@ -479,6 +578,15 @@ async function scanScoped(input) {
   const env = input.env ?? new LocalEnv();
   const startedAt = options.now();
   const errors = [];
+  env.scanMetrics = {
+    filesSized: 0,
+    directoriesSized: 0,
+    indexHits: 0,
+    sizeCacheHits: 0,
+  };
+  env.scanIndex = new ScanIndex(options.cacheDir);
+  env.platformIndex = options.platformIndex;
+  await env.scanIndex.load();
   resetWritableLayers(env.executor);
   env.writableLayer = null;
   env.scanPolicy = null;
@@ -492,7 +600,10 @@ async function scanScoped(input) {
     options.host === false
       ? []
       : await scanEnvironment(env, options, { roots: options.roots, errors });
-  const docker = await dockerSection(env, options, errors);
+  const docker =
+    env.scanStatus === 'goal-reached'
+      ? null
+      : await dockerSection(env, options, errors);
   blockMountedHostItems(hostItems, docker?.bindMounts ?? [], env.path);
   const items = filterItems(
     [...hostItems, ...(docker?.items ?? [])],
@@ -515,6 +626,10 @@ async function scanScoped(input) {
     startedAt,
   });
   reportEnvironments.set(report, env);
+  await env.scanIndex.save();
+  await authenticateReport(report, options.cacheDir);
+  sealReport(report);
+  await saveScan(report, options.cacheDir);
   return report;
 }
 
@@ -524,6 +639,7 @@ function reportOptions(options) {
   delete serializable.env;
   delete serializable.signal;
   delete serializable.onScanProgress;
+  delete serializable.onScanPhase;
   return serializable;
 }
 

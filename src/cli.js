@@ -15,9 +15,11 @@ import { startAudit, writeAudit } from './audit.js';
 import { clean } from './clean.js';
 import { emergency } from './emergency.js';
 import { setTrace } from './exec.js';
-import { resolveGoal } from './options.js';
+import { resolveGoal, resolveOptions } from './options.js';
 import { formatAudit, formatReport } from './report.js';
 import { scan } from './scan.js';
+import { cleanDuringScan } from './fast-clean.js';
+import { defaultStateDirectory, loadScan } from './scan-state.js';
 import { formatBytes } from './units.js';
 
 export const USAGE = `Usage: dss <command> [paths...] [options]
@@ -67,6 +69,9 @@ Consent:
 Output:
   --json                     print the report or audit log as JSON
   --report FILE              clean: use a report saved by scan --json
+  --from FILE                clean/emergency: reuse a scan or audit JSON
+  --fresh                    bypass the recent scan and persistent index
+  --cache-dir DIR            scan state (default: XDG state directory)
   --audit-dir DIR            audit logs ($DSS_AUDIT_DIR)
   --backup-dir DIR           container log backups ($DSS_BACKUP_DIR)
   --verbose                  list everything and trace commands (DSS_DEBUG=1)
@@ -106,6 +111,9 @@ const OPTIONS = {
   'allow-dirty-container': { type: 'string', multiple: true },
   'no-native': { type: 'boolean' },
   report: { type: 'string' },
+  from: { type: 'string' },
+  fresh: { type: 'boolean' },
+  'cache-dir': { type: 'string' },
   'audit-dir': { type: 'string' },
   'backup-dir': { type: 'string' },
   help: { type: 'boolean', short: 'h' },
@@ -182,6 +190,9 @@ export function toOptions(values, paths = []) {
     noNative: values['no-native'],
     auditDir: values['audit-dir'],
     backupDir: values['backup-dir'],
+    cacheDir: values.fresh
+      ? false
+      : (values['cache-dir'] ?? defaultStateDirectory()),
   };
 }
 
@@ -240,14 +251,7 @@ function dockerOnly(options, values) {
 export function scanAudit(report) {
   return startAudit('scan', {
     dryRun: true,
-    report: {
-      createdAt: report.createdAt,
-      durationMs: report.durationMs,
-      totals: report.totals,
-      environments: report.environments.map((env) => env.id),
-      errors: report.errors,
-      items: report.items,
-    },
+    report,
     entries: report.items.map((item) => ({
       id: item.id,
       env: item.env,
@@ -283,7 +287,7 @@ export function processIo() {
   };
 }
 
-const API = { scan, clean, emergency };
+const API = { scan, clean, emergency, cleanDuringScan };
 
 class Cli {
   constructor(io, api) {
@@ -321,10 +325,19 @@ class Cli {
   }
 
   async loadReport(options, values) {
-    if (!values.report) {
+    const file = values.from ?? values.report;
+    if (!file) {
+      const recent = await loadScan(resolveOptions(options));
+      if (recent) {
+        this.io.stderr(
+          `Reusing scan from ${recent.createdAt}; planned items will be checked before deletion.`
+        );
+        return recent;
+      }
       return this.api.scan(options);
     }
-    return JSON.parse(await fsp.readFile(values.report, 'utf8'));
+    const saved = JSON.parse(await fsp.readFile(file, 'utf8'));
+    return saved.report?.schema ? saved.report : saved;
   }
 
   confirmItem() {
@@ -371,6 +384,33 @@ class Cli {
   }
 
   async clean(options, values) {
+    if (
+      this.api.cleanDuringScan &&
+      !values.report &&
+      !values.from &&
+      !this.io.interactive
+    ) {
+      const recent = await loadScan(resolveOptions(options));
+      if (!recent) {
+        const result = await this.consent(values, (extra) =>
+          this.api.cleanDuringScan({
+            ...options,
+            ...extra,
+            streaming: options.docker !== false,
+          })
+        );
+        if (result.report.aborted) {
+          return this.printScan(result.report, options, values);
+        }
+        this.print(values, result.audit, () =>
+          formatAudit(result.audit, { verbose: values.verbose })
+        );
+        return result.audit.aborted ||
+          result.audit.entries.some((entry) => entry.status === 'failed')
+          ? 1
+          : 0;
+      }
+    }
     const report = await this.loadReport(options, values);
     if (report.aborted) {
       return this.printScan(report, options, values);
@@ -392,6 +432,32 @@ class Cli {
       resolveGoal(options);
     } catch (error) {
       throw new UsageError(error.message);
+    }
+    if (
+      this.api === API &&
+      !values.report &&
+      !values.from &&
+      !this.io.interactive
+    ) {
+      const recent = await loadScan(resolveOptions(options));
+      const audit = await this.consent(values, (extra) =>
+        this.api.emergency({
+          ...options,
+          ...(recent ? { report: recent } : {}),
+          ...extra,
+        })
+      );
+      if (audit.scanReport?.aborted) {
+        return this.printScan(audit.scanReport, options, values);
+      }
+      this.print(values, audit, () =>
+        formatAudit(audit, { verbose: values.verbose })
+      );
+      return audit.entries.some((entry) => entry.status === 'failed')
+        ? 1
+        : audit.goalMet
+          ? 0
+          : 3;
     }
     const report = await this.loadReport(options, values);
     if (report.aborted) {
@@ -461,7 +527,7 @@ export async function runCli(argv, deps = {}) {
     }
     options.onScanProgress = (progress) =>
       io.stderr(
-        `[scan] ${progress.env}: ${progress.scanner}, ${Math.round(progress.elapsedMs / 1000)}s, ${progress.items} items (${progress.status})`
+        `[scan] ${progress.env}: ${progress.scanner}, ${Math.round(progress.elapsedMs / 1000)}s, ${progress.candidates ?? progress.items} candidates, ${progress.filesSized ?? 0} files sized, ${progress.directoriesSized ?? 0} directories sized (${progress.status})`
       );
     return await dispatch(
       new Cli(io, deps.api ?? API),

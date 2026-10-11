@@ -132,9 +132,9 @@ describe('emergency mode', () => {
       expect(audit.goalMet).toBe(true);
       expect(audit.reachedTier).toBe('safe');
       expect(audit.entries.map((e) => [e.rule, e.status])).toEqual([
-        ['npm-cache', 'removed'],
+        ['pip-cache', 'removed'],
       ]);
-      expect(kept()).toEqual(['pip', 'old', 'recent']);
+      expect(kept()).toEqual(['npm', 'old', 'recent']);
       removeRoot(root);
     }
   );
