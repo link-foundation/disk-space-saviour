@@ -34,8 +34,9 @@ cache measurement nor project discovery runs after a cheap cache meets the goal.
 
 Matching CLI scans are stored for 30 minutes. `--from` accepts a scan or an audit
 containing its full scan report. A local HMAC, host/user identity and age check
-allow an unchanged report to bypass discovery; edited, unsigned or expired input
-uses the existing scanner reconstruction. The private key and plans use mode 0600,
+allow an unchanged report to bypass discovery; edited, unsigned or expired input,
+and changes to discovery or action options, use the existing scanner reconstruction.
+The private key and plans use mode 0600,
 and the state directory uses 0700 when created. `--fresh` disables this reuse.
 
 Discovery uses eight directory workers, metadata operations use bounded workers,

@@ -78,7 +78,8 @@ Run `dss --help` for every option. The most useful ones:
 - `--report FILE` limits cleaning to items in a saved `dss scan --json`
   report. `--from FILE` also accepts an audit JSON containing the full report.
   Recent reports authenticated by this installation are reused; older, unsigned
-  or edited reports require discovery again. Every deletion still gets fresh checks.
+  or edited reports require discovery again. Changing discovery or action options
+  also rebuilds the plan. Every deletion still gets fresh checks.
 - `clean` automatically reuses a matching scan from the last 30 minutes.
   `--fresh` bypasses this plan and the discovery/size index; `--cache-dir DIR`
   chooses the state location (default `$XDG_STATE_HOME/disk-space-saviour`, or

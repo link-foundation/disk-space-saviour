@@ -30,6 +30,7 @@ import {
   authenticatedReport,
   saveScan,
   ScanIndex,
+  scopeKey,
 } from './scan-state.js';
 
 export const SCANNERS = {
@@ -83,6 +84,20 @@ function sealReport(report) {
   return report;
 }
 
+function unchangedDiscoveryScope(report, input) {
+  const original = resolveOptions(report.options);
+  const overrides = Object.fromEntries(
+    Object.entries(input).filter(
+      ([name, value]) =>
+        RESCAN_OPTIONS.has(name) && value !== undefined && value !== null
+    )
+  );
+  return (
+    scopeKey(original) ===
+    scopeKey(resolveOptions({ ...original, ...overrides }))
+  );
+}
+
 /** Rebuild scanner-derived actions when a report came from JSON or changed. */
 export async function revalidateReport(saved, input = {}) {
   if (trustedReports.get(saved) === safetySnapshot(saved)) {
@@ -90,11 +105,12 @@ export async function revalidateReport(saved, input = {}) {
   }
   saved = saved.report?.schema === REPORT_SCHEMA ? saved.report : saved;
   if (
-    await authenticatedReport(
+    unchangedDiscoveryScope(saved, input) &&
+    (await authenticatedReport(
       saved,
       input.cacheDir,
       input.now?.() ?? Date.now()
-    )
+    ))
   ) {
     return sealReport(saved);
   }

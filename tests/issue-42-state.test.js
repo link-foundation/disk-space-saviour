@@ -301,6 +301,36 @@ describe('issue 42 streaming cleanup', () => {
 
 describe('issue 42 fresh filesystem safeguards', () => {
   itUnless(sandboxed)(
+    'honors action-changing options when reusing authenticated JSON',
+    async () => {
+      const { root, env, input } = fixture();
+      env.currentHome = join(root, 'home');
+      env.which = async (name) => name === 'bun';
+      writeBlob(join(root, 'home', '.bun', 'install', 'cache', 'blob'));
+      age(root, 40 * DAY_MS);
+      try {
+        const saved = JSON.parse(
+          JSON.stringify(await scan({ ...input, noNative: false }))
+        );
+        expect(
+          saved.items.find((item) => item.rule === 'bun-cache').action.type
+        ).toBe('command');
+        const audit = await clean(saved, {
+          ...input,
+          noNative: true,
+          dryRun: true,
+          audit: false,
+        });
+        expect(
+          audit.entries.find((entry) => entry.rule === 'bun-cache').action
+        ).toBe('remove');
+      } finally {
+        removeRoot(root);
+      }
+    }
+  );
+
+  itUnless(sandboxed)(
     'protects projects that became active after the saved scan',
     async () => {
       const { root, input } = fixture();
