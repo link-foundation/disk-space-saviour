@@ -135,6 +135,10 @@ function ageFilter(context, rule) {
   return () => true;
 }
 
+function requiresMtime(rule) {
+  return rule.mtime ?? (rule.scope === 'tmp' || Boolean(rule.minAge));
+}
+
 /** Keep the latest installed revision of each browser and platform family. */
 function olderVersions(env, rule, paths, stats) {
   if (!rule.versionPattern) {
@@ -181,6 +185,7 @@ async function buildItem(context, rule, base, group) {
     path: paths[0],
     paths,
     bytes: group.reduce((sum, entry) => sum + entry.usage.bytes, 0),
+    sizeEstimated: group.some((entry) => entry.usage.estimated),
     newestMtimeMs: Math.max(...group.map((e) => e.usage.newestMtimeMs ?? 0)),
     tier: rule.tier ?? 'safe',
     reason: rule.minAge
@@ -269,13 +274,21 @@ export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
       found.push({ rule, base, paths });
     }
   }
-  const usages = await env.usageMany(found.flatMap((entry) => entry.paths));
   await resolvePaths(
     context,
     found.flatMap((entry) => entry.paths)
   );
   const items = scanItems(context);
+  // Deliver cheap native measurements before rules needing recursive activity
+  // timestamps, so an emergency goal can avoid the expensive work entirely.
+  found.sort(
+    (a, b) => Number(requiresMtime(a.rule)) - Number(requiresMtime(b.rule))
+  );
   for (const { rule, base, paths } of found) {
+    const usages = await env.usageMany(paths, {
+      mtime: requiresMtime(rule),
+      cache: true,
+    });
     const accept = ageFilter(context, rule);
     const measured = paths
       .map((target) => ({ path: target, usage: usages.get(target) }))
@@ -284,7 +297,11 @@ export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
       ? [measured]
       : measured.map((entry) => [entry]);
     for (const group of groups.filter((g) => g.length > 0)) {
-      items.push(await buildItem(context, rule, base, group));
+      const item = await buildItem(context, rule, base, group);
+      items.push(item);
+      if ((await context.ready?.([item])) === false) {
+        return items;
+      }
     }
   }
   return items;

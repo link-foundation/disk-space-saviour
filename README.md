@@ -76,7 +76,13 @@ Run `dss --help` for every option. The most useful ones:
 - `--scanner NAME` restricts scanning to `projects`, `global`, `versions`,
   `agents` or `system`.
 - `--report FILE` limits cleaning to items in a saved `dss scan --json`
-  report. The current rules rescan those items before deletion.
+  report. `--from FILE` also accepts an audit JSON containing the full report.
+  Recent reports authenticated by this installation are reused; older, unsigned
+  or edited reports require discovery again. Every deletion still gets fresh checks.
+- `clean` automatically reuses a matching scan from the last 30 minutes.
+  `--fresh` bypasses this plan and the discovery/size index; `--cache-dir DIR`
+  chooses the state location (default `$XDG_STATE_HOME/disk-space-saviour`, or
+  `~/.local/state/disk-space-saviour`).
 
 ## Tiers
 
@@ -178,6 +184,38 @@ JSON stdout clean. SIGINT and SIGTERM stop new work, cancel subprocesses and
 print completed findings marked `aborted`; incomplete findings remain blocked.
 The CLI exits 130 or 143 respectively. A second signal exits immediately.
 Library callers can pass an `AbortSignal` and an `onScanProgress` callback.
+
+Global caches run first, prioritizing rules that can use native sizing without
+recursive activity timestamps, and emit findings as each rule finishes. Non-interactive
+`clean` plans or deletes completed safe host caches while the remaining discovery
+continues. `emergency` does the same, checks actual free space after each deletion,
+and skips the remaining scan once the goal is met. Interactive runs show a plan
+before asking for deletion consent. A later phase hitting its budget blocks its
+partial findings while completed independent findings stay usable.
+
+Project discovery uses eight directory workers, prunes matched generated trees,
+Git objects, home media/Photos libraries, macOS Library and mounted volumes.
+Source activity is checked separately without sizing entire project trees again.
+Spotlight (`mdfind`) or `plocate`/`locate` supplies verified early hints when
+available; the walk also runs because an index can miss files. Version-pin discovery
+also prunes dependency/build trees.
+
+The persistent `index/` stores directory listings and candidate measurements.
+Each descendant directory's own mtime/ctime and identity is checked before reusing
+its listing, so a nested addition is visible even when an ancestor did not change.
+Unchanged directories avoid another listing; discovery still checks their metadata.
+Sizing uses bounded workers and `du -skx` when no recursive activity timestamp is
+needed. Sizes cached for up to an hour are labeled **estimated**, because changing
+an existing descendant need not update the candidate's directory mtime. Cleanup
+always bypasses that cache and rechecks processes, open files, Git, path boundaries
+and sizes. Safe cleanup also rechecks source activity. Explicit moderate cleanup
+preserves the ability to remove ignored dependencies when only source changed.
+Library callers opt into state with `cacheDir`.
+
+On macOS, reports include `sysctl vm.swapusage` and the largest resident/compressed
+memory consumers from `top`. These are memory diagnostics, not verified per-process
+swap ownership. When Docker Desktop consumes memory, saving work and restarting it
+or lowering its VM memory limit can help. dss never deletes swap files.
 
 Cache discovery honors tool configuration before default paths, including
 `GOMODCACHE`, `GOPATH`, `GOCACHE`, `CARGO_HOME`, `RUSTUP_HOME`,

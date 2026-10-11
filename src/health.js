@@ -107,9 +107,9 @@ function describe(lost) {
  * Per-environment snapshots and re-checks. `records` is the audit view.
  */
 export class HealthWatch {
-  constructor() {
-    this.records = [];
-    this.byEnv = new Map();
+  constructor(records = []) {
+    this.records = [...records];
+    this.byEnv = new Map(records.map((record) => [record.env, record]));
   }
 
   /**

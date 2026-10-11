@@ -89,12 +89,40 @@ export async function emergency(input = {}) {
   });
   const report = input.report
     ? await revalidateReport(input.report, { ...input, env })
-    : await scan({ ...input, env });
-  audit.report = { createdAt: report.createdAt, totals: report.totals };
+    : goalMet(goal, diskBefore)
+      ? {
+          createdAt: new Date(options.now()).toISOString(),
+          items: [],
+          environments: [{ id: env.id, label: env.label }],
+          totals: {},
+        }
+      : await scan({
+          ...input,
+          env,
+          onScanPhase: async (phase) => {
+            audit.diskAfter = await escalate({
+              report: phase,
+              options: {
+                ...options,
+                tier: 'safe',
+                streaming: options.docker !== false,
+              },
+              env,
+              target,
+              goal,
+              audit,
+            });
+            return !goalMet(goal, audit.diskAfter);
+          },
+        });
+  audit.report = report;
   if (options.audit !== false) {
     await writeAudit(audit, { ...options, inProgress: true });
   }
-  let disk = diskBefore;
+  let disk = audit.diskAfter ?? diskBefore;
+  if (report.aborted) {
+    audit.scanReport = report;
+  }
   try {
     if (!goalMet(goal, disk)) {
       disk = await escalate({ report, options, env, target, goal, audit });
@@ -121,9 +149,10 @@ async function escalate({ report, options, env, target, goal, audit }) {
     ...options,
     env,
     onProgress: persistProgress,
+    priorHealth: audit.health,
   });
   audit.health = cleaner.health.records;
-  const done = new Set();
+  const done = new Set(audit.entries.map((entry) => entry.id));
   const targetDevice = await env.deviceId?.(target);
   const scoped = await Promise.all(
     wantedItems(report, options).map(async (item) => {
@@ -141,8 +170,10 @@ async function escalate({ report, options, env, target, goal, audit }) {
     })
   );
   const wanted = scoped.filter(Boolean);
-  let disk = audit.diskBefore;
-  let freed = 0;
+  let disk = audit.diskAfter ?? audit.diskBefore;
+  let freed = audit.entries
+    .filter((entry) => entry.status === 'planned')
+    .reduce((sum, entry) => sum + entry.plannedBytes, 0);
   for (const tier of TIERS.slice(0, tierRank(options.tier) + 1)) {
     audit.reachedTier = tier;
     const items = selectByTier(wanted, tier)

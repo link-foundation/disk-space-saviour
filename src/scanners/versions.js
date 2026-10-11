@@ -190,7 +190,9 @@ async function ruleItems(context, rule, home, pins) {
     return [];
   }
   const refs = [...(await managerRefs(env, rule, home, installs)), ...pins];
-  const usages = await env.usageMany(installs);
+  const usages = await env.usageMany(installs, {
+    cache: !context.options.freshSizes,
+  });
   await resolvePaths(context, installs);
   const newest = newestInstalls(env, rule, installs, usages);
   const versionOf = rule.versionOf ?? ((dir) => env.path.basename(dir));
@@ -200,15 +202,16 @@ async function ruleItems(context, rule, home, pins) {
     if (newest.has(dir) || refs.some((ref) => versionMatches(version, ref))) {
       continue;
     }
-    const usage = usages.get(dir);
+    const usage = usages.get(dir) ?? {};
     const item = makeItem(env, {
       rule: rule.id,
       kind: 'toolchain',
       ecosystem: rule.ecosystem,
       description: `${rule.description} ${version}`,
       path: dir,
-      bytes: usage?.bytes ?? 0,
-      newestMtimeMs: usage?.newestMtimeMs ?? 0,
+      bytes: usage.bytes ?? 0,
+      sizeEstimated: Boolean(usage.estimated),
+      newestMtimeMs: usage.newestMtimeMs ?? 0,
       tier: 'moderate',
       reason: `not the ${rule.manager} default, not pinned by a scanned project, not the newest`,
       checks: { busy: rule.busy ?? [], cwd: dir, mtime: true },

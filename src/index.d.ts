@@ -13,12 +13,21 @@ export interface ScanOptions {
   maxDepth?: number;
   /** Time budget per filesystem environment (`2m`); incomplete findings are kept. */
   scanBudget?: Duration;
+  /** Persistent scan/index directory. Library default is false; CLI uses XDG state. */
+  cacheDir?: string | false;
+  /** Use verified Spotlight/locate hints before the discovery walk. */
+  platformIndex?: boolean;
   signal?: AbortSignal;
   onScanProgress?: (progress: {
     env: string;
     scanner: string;
     elapsedMs: number;
     items: number;
+    candidates: number;
+    filesSized: number;
+    directoriesSized: number;
+    indexHits: number;
+    sizeCacheHits: number;
     status: string;
   }) => void;
   /** Activity window: newer files are kept (`1h`). */
@@ -109,6 +118,8 @@ export interface Item {
   path: string | null;
   paths: string[];
   bytes: number;
+  /** Cached size is advisory; cleanup always measures again. */
+  sizeEstimated?: boolean;
   /** Merged filesystem bytes, including image data, when measured in Docker. */
   totalBytes?: number;
   /** Immutable image bytes excluded from reclaimable totals. */
@@ -154,9 +165,23 @@ export interface EnvironmentDescriptor {
   chain: Array<{ containerId: string; name: string }>;
   hint?: string | null;
   disk?: Disk | null;
+  swap?: {
+    total: number;
+    used: number;
+    free: number;
+    holders: Array<{
+      pid: number;
+      command: string;
+      memoryBytes: number;
+      compressedBytes: number;
+    }>;
+    attribution: string;
+    advice: string;
+  } | null;
   scanStatus?:
     | 'scanning'
     | 'complete'
+    | 'goal-reached'
     | 'aborted'
     | 'budget-exceeded'
     | 'error'
@@ -178,6 +203,7 @@ export interface Report {
   createdAt: string;
   durationMs: number;
   aborted?: boolean;
+  authentication?: { hostname: string; uid: number | string; digest: string };
   audit?: { file: string | null; error: string; code?: string };
   host: { env: string; label: string; platform: string };
   options: Record<string, unknown>;
@@ -235,6 +261,7 @@ export interface AuditLog {
   startedAt: string;
   finishedAt: string | null;
   aborted?: boolean;
+  report?: Partial<Report>;
   error?: string;
   entries: AuditEntry[];
   freedBytes: number;

@@ -405,7 +405,47 @@ export class ShellEnv {
   }
 
   findFiles(roots, { names, maxDepth = 6, skipNames } = {}) {
-    return this.#find(roots, 'f', names, maxDepth, skipNames);
+    return this.#find(roots, 'f', names, maxDepth, [
+      ...new Set([
+        ...(skipNames ?? this.skipNames),
+        'node_modules',
+        'target',
+        'vendor',
+        '.venv',
+        'venv',
+      ]),
+    ]);
+  }
+
+  async projectActivity(project, globs) {
+    const prune = [
+      '-type',
+      'd',
+      '(',
+      ...findNameExpression([...new Set([...this.skipNames, ...globs])]),
+      ')',
+      '-prune',
+      '-o',
+    ];
+    const argv = [
+      'find',
+      project,
+      '-xdev',
+      ...this.#prunePaths(),
+      ...prune,
+      '-type',
+      'f',
+      '-exec',
+      'stat',
+      '-c',
+      '%Y',
+      '{}',
+      '+',
+    ];
+    const result = await this.sh(
+      `${argv.map(shellQuote).join(' ')} | awk 'BEGIN{m=0} {if ($1>m) m=$1} END{print m}'`
+    );
+    return Number(result.stdout.trim()) * 1000 || 0;
   }
 
   /**

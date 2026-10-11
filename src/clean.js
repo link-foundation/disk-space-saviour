@@ -44,6 +44,7 @@ import { OTHER_RULES } from './rules/other.js';
 import { compareVersions, VERSION_RULES } from './rules/versions.js';
 import { scanVersions } from './scanners/versions.js';
 import { analyzeRustProfile } from './scanners/rust.js';
+import { currentProjectTier } from './scanners/projects.js';
 import {
   filterItems,
   revalidateReport,
@@ -161,7 +162,7 @@ export class Cleaner {
     this.report = report;
     this.options = options;
     this.contexts = new Map();
-    this.health = new HealthWatch();
+    this.health = new HealthWatch(options.priorHealth);
     this.descriptors = new Map(
       (report.environments ?? []).map((env) => [env.id, env])
     );
@@ -371,6 +372,15 @@ export class Cleaner {
   }
 
   async #staticBlocker(ctx, item) {
+    if (item.project && this.options.tier === 'safe') {
+      const tier = await currentProjectTier(
+        { ...ctx, options: this.options, now: this.options.now() },
+        item
+      );
+      if (tierRank(tier) > tierRank(this.options.tier)) {
+        return `project recently active; requires the ${tier} tier`;
+      }
+    }
     if (item.recheck?.type === 'version') {
       if (!ctx.cacheRootsConfigured) {
         await configureCacheRoots(ctx.env, await ctx.env.homeDirs());
@@ -385,6 +395,7 @@ export class Cleaner {
           options: {
             ...this.options,
             homes: [item.recheck.home],
+            freshSizes: true,
             roots: this.report.options.roots ?? [],
           },
           now: this.options.now(),
@@ -429,9 +440,18 @@ export class Cleaner {
     if (
       ctx.env.kind === 'host' &&
       type === 'remove' &&
-      this.report.docker?.daemons?.some((daemon) => daemon.env === ctx.env.id)
+      (this.report.docker?.daemons?.some(
+        (daemon) => daemon.env === ctx.env.id
+      ) ||
+        this.options.streaming)
     ) {
-      const mounts = await runningBindMounts(new DockerCli(ctx.executor));
+      const docker = new DockerCli(ctx.executor);
+      if (this.options.streaming && !(await docker.info())) {
+        return this.options.docker === true
+          ? 'cannot verify running Docker bind mounts'
+          : null;
+      }
+      const mounts = await runningBindMounts(docker);
       for (const mount of mounts) {
         if (
           item.paths.some(
@@ -907,7 +927,8 @@ export async function clean(report, input = {}) {
   const audit = startAudit(input.command ?? 'clean', {
     dryRun: Boolean(options.dryRun),
     tier: options.tier,
-    report: { createdAt: report.createdAt, totals: report.totals },
+    report,
+    entries: [...(input.priorEntries ?? [])],
   });
   const persistProgress = async (entry) => {
     if (!audit.entries.includes(entry)) {
@@ -927,7 +948,10 @@ export async function clean(report, input = {}) {
     await writeAudit(audit, { ...options, inProgress: true });
   }
   try {
-    for (const item of planItems(report, options)) {
+    const done = new Set(audit.entries.map((entry) => entry.id));
+    for (const item of planItems(report, options).filter(
+      (item) => !done.has(item.id)
+    )) {
       if (options.signal?.aborted) {
         throw new Error('cleanup aborted');
       }

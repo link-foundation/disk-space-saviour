@@ -56,7 +56,7 @@ function itemLine(item, showEnv) {
     : item.imageBytes
       ? `  (${formatBytes(item.imageBytes)} in image${item.imageRef ? ` ${item.imageRef}` : ''}; 0 B of that data freeable now; remove the stopped container and unused image after the task completes)`
       : '';
-  return `  ${pad(formatBytes(item.bytes), 10)}  ${env}${item.rule}  ${itemLocation(item)}${confirm}${storage}`;
+  return `  ${pad(formatBytes(item.bytes), 10)}${item.sizeEstimated ? ' (estimated)' : ''}  ${env}${item.rule}  ${itemLocation(item)}${confirm}${storage}`;
 }
 
 function limited(lines, limit) {
@@ -318,6 +318,18 @@ export function formatReport(report, options = {}) {
     `disk-space-saviour scan of ${host.label} in ${(report.durationMs / 1000).toFixed(1)}s (report only, nothing was deleted)`,
     formatDisk(host.disk),
   ];
+  if (host.swap) {
+    lines.push(
+      `Swap: ${formatBytes(host.swap.used)} used of ${formatBytes(host.swap.total)} (managed by macOS)`
+    );
+    lines.push(host.swap.attribution);
+    for (const holder of host.swap.holders) {
+      lines.push(
+        `  ${holder.pid} ${holder.command}: ${formatBytes(holder.memoryBytes)} memory, ${formatBytes(holder.compressedBytes)} compressed`
+      );
+    }
+    lines.push(host.swap.advice);
+  }
   for (const tier of TIERS) {
     lines.push(...tierSection(report, tier, { limit }));
   }
@@ -325,7 +337,11 @@ export function formatReport(report, options = {}) {
     if (env.layerSource) {
       lines.push(`  ${env.label}: layer source ${env.layerSource}`);
     }
-    if (env.scanStatus && env.scanStatus !== 'complete') {
+    if (env.scanStatus === 'goal-reached') {
+      lines.push(
+        `  ${env.label}: scan stopped after the free-space goal was met`
+      );
+    } else if (env.scanStatus && env.scanStatus !== 'complete') {
       lines.push(`  ${env.label}: scan incomplete (${env.scanStatus})`);
     }
     if (env.hint) {

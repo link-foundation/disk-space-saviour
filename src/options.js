@@ -16,7 +16,7 @@ export const DEFAULTS = {
   docker: null,
   dockerDepth: 3,
   containers: [],
-  scanners: ['projects', 'global', 'versions', 'agents', 'system'],
+  scanners: ['global', 'projects', 'versions', 'agents', 'system'],
   only: [],
   exclude: [],
   includeVolumes: false,
@@ -33,6 +33,8 @@ export const DEFAULTS = {
   backupDir: null,
   auditDir: null,
   scanBudget: '2m',
+  cacheDir: false,
+  platformIndex: true,
 };
 
 function toBytes(value) {

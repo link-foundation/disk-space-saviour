@@ -64,6 +64,9 @@ import { CACHE_VARIABLES } from './cache-roots.js';
 
 import { hostExecutor } from '../exec.js';
 import { matchesGlob } from '../paths.js';
+import { mapLimit } from './parallel.js';
+import { directoryFingerprint, SIZE_MAX_AGE } from '../scan-state.js';
+import { indexedDirectories } from './platform-index.js';
 
 // Directories read concurrently while measuring usage.
 const WALK_BATCH = 64;
@@ -252,6 +255,7 @@ export class LocalEnv {
       size: stats.size,
       bytes: diskBytes(stats),
       mtimeMs: stats.mtimeMs,
+      ctimeMs: stats.ctimeMs,
       inode: `${stats.dev}:${stats.ino}`,
       uid: stats.uid,
       gid: stats.gid,
@@ -295,31 +299,36 @@ export class LocalEnv {
     return heads;
   }
 
-  async list(dir) {
+  async list(dir, { discovery = false } = {}) {
     let names;
     try {
-      names = await (this.options.fileFs ?? fsp).readdir(dir);
+      names = await (this.options.fileFs ?? fsp).readdir(dir, {
+        withFileTypes: true,
+      });
     } catch (error) {
       this.recordAccessError(dir, error);
       return [];
     }
-    const entries = await Promise.all(
-      names.map(async (name) => {
-        const full = path.join(dir, name);
-        const stats = await this.#lstat(full);
-        if (!stats) {
-          return null;
-        }
-        return {
-          name,
-          path: full,
-          type: entryType(stats),
-          size: stats.size,
-          bytes: diskBytes(stats),
-          mtimeMs: stats.mtimeMs,
-        };
-      })
-    );
+    const entries = await mapLimit(names, 32, async (entry) => {
+      const name = typeof entry === 'string' ? entry : entry.name;
+      const full = path.join(dir, name);
+      if (discovery && typeof entry !== 'string' && !entry.isDirectory()) {
+        return { name, path: full, type: entryType(entry), mtimeMs: 0 };
+      }
+      const stats = await this.#lstat(full);
+      if (!stats) {
+        return null;
+      }
+      return {
+        name,
+        path: full,
+        type: entryType(stats),
+        size: stats.size,
+        bytes: diskBytes(stats),
+        mtimeMs: stats.mtimeMs,
+        device: stats.dev,
+      };
+    });
     return entries.filter(Boolean);
   }
 
@@ -328,14 +337,15 @@ export class LocalEnv {
    * counted a single time, symlinks not followed. Also reports the newest
    * file mtime.
    */
-  async usage(target) {
-    return (await this.usageMany([target])).get(target) ?? null;
+  async usage(target, options) {
+    return (await this.usageMany([target], options)).get(target) ?? null;
   }
 
   async statMany(targets) {
-    const entries = await Promise.all(
-      targets.map(async (target) => [target, await this.stat(target)])
-    );
+    const entries = await mapLimit(targets, 32, async (target) => [
+      target,
+      await this.stat(target),
+    ]);
     return new Map(entries.filter(([, stat]) => stat));
   }
 
@@ -362,6 +372,9 @@ export class LocalEnv {
       apparentBytes += stats.size;
       if (!stats.isDirectory()) {
         files++;
+        if (this.scanMetrics) {
+          this.scanMetrics.filesSized++;
+        }
         newestMtimeMs = Math.max(newestMtimeMs, stats.mtimeMs);
       }
     };
@@ -375,12 +388,10 @@ export class LocalEnv {
         errors++;
         return [];
       }
-      const children = await Promise.all(
-        names.map(async (name) => {
-          const full = path.join(dir, name);
-          return [full, await this.#lstat(full)];
-        })
-      );
+      const children = await mapLimit(names, 32, async (name) => {
+        const full = path.join(dir, name);
+        return [full, await this.#lstat(full)];
+      });
       const subdirs = [];
       for (const [full, stats] of children) {
         if (!stats) {
@@ -453,6 +464,10 @@ export class LocalEnv {
     return results;
   }
 
+  indexedDirs(roots, globs, maxDepth) {
+    return indexedDirectories(this, roots, globs, maxDepth);
+  }
+
   /**
    * Finds regular files whose basename matches one of `names`.
    * @returns {Promise<string[]>}
@@ -468,7 +483,14 @@ export class LocalEnv {
           results.push(entry.path);
         }
       }
-      return null;
+      return new Set([
+        'node_modules',
+        'target',
+        'vendor',
+        '.venv',
+        'venv',
+        ...this.skipNames,
+      ]);
     });
     return results;
   }
@@ -480,55 +502,214 @@ export class LocalEnv {
   async #walk(roots, maxDepth, skipNames, visit) {
     const skip = skipNames ? new Set(skipNames) : this.skipNames;
     const visited = new Set();
-    const queue = await Promise.all(
+    let queue = await Promise.all(
       roots.map(async (root) => [root, 0, await this.deviceId(root)])
     );
     while (queue.length > 0) {
       checkSignal(this.signal);
-      const [dir, depth, device] = queue.shift();
-      if (visited.has(dir)) {
-        continue;
-      }
-      visited.add(dir);
-      const entries = [];
-      for (const entry of await this.list(dir)) {
-        if (
-          entry.type !== 'dir' ||
-          (await this.deviceId(entry.path)) === device
-        ) {
-          entries.push(entry);
+      const current = queue;
+      queue = [];
+      const children = await mapLimit(
+        current,
+        8,
+        async ([dir, depth, device]) => {
+          if (visited.has(dir)) {
+            return [];
+          }
+          visited.add(dir);
+          const entries = [];
+          for (const entry of await this.discoveryList(dir)) {
+            if (
+              entry.type !== 'dir' ||
+              (entry.device ?? (await this.deviceId(entry.path))) === device
+            ) {
+              entries.push(entry);
+            }
+          }
+          const pruned = visit(dir, entries) ?? new Set();
+          if (depth + 1 >= maxDepth) {
+            return [];
+          }
+          const next = [];
+          for (const entry of entries) {
+            if (
+              entry.type === 'dir' &&
+              !pruned.has(entry.name) &&
+              !this.skipDiscoveryDirectory(dir, entry.name, skip) &&
+              (entry.device ?? (await this.deviceId(entry.path))) === device
+            ) {
+              next.push([entry.path, depth + 1, device]);
+            }
+          }
+          return next;
         }
-      }
-      const pruned = visit(dir, entries) ?? new Set();
-      if (depth + 1 >= maxDepth) {
-        continue;
-      }
-      for (const entry of entries) {
-        if (
-          entry.type === 'dir' &&
-          !pruned.has(entry.name) &&
-          !skip.has(entry.name) &&
-          (await this.deviceId(entry.path)) === device
-        ) {
-          queue.push([entry.path, depth + 1, device]);
-        }
-      }
+      );
+      queue = children.flat();
     }
   }
 
-  async usageMany(targets) {
-    const usages = await this.rawUsageMany(targets);
+  skipDiscoveryDirectory(dir, name, skip = this.skipNames) {
+    if (skip.has(name) || /\.photoslibrary$/i.test(name)) {
+      return true;
+    }
+    const homes = this.options.homes ?? [this.currentHome];
+    return (
+      (['Music', 'Pictures', 'Movies'].includes(name) && homes.includes(dir)) ||
+      (name === 'Volumes' && dir === this.path.parse(dir).root)
+    );
+  }
+
+  async discoveryStat(dir) {
+    let stats = await this.stat(dir);
+    // Explicit roots may be aliases (for example /tmp on macOS). Child links
+    // are never queued by the walker, so only an explicitly supplied root follows.
+    if (stats?.type === 'symlink') {
+      const resolved = await this.realPath(dir);
+      stats = resolved ? await this.stat(resolved) : null;
+    }
+    return stats;
+  }
+
+  async discoveryList(dir) {
+    checkSignal(this.signal);
+    const stats = await this.discoveryStat(dir);
+    if (!stats || stats.type !== 'dir') {
+      return [];
+    }
+    const key = `list:${dir}`;
+    const fingerprint = `${directoryFingerprint(stats)}:${JSON.stringify([this.scanPolicy?.exclude, this.scanPolicy?.pruned])}`;
+    let entries = this.scanIndex?.get(key, fingerprint);
+    if (entries) {
+      this.scanMetrics.indexHits++;
+    } else {
+      const errors = this.accessErrors?.size ?? 0;
+      entries = await this.list(dir, { discovery: true });
+      if ((this.accessErrors?.size ?? 0) === errors) {
+        this.scanIndex?.set(key, fingerprint, entries);
+      }
+    }
+    // Stored metadata is a discovery hint; never accept external paths from it.
+    const listing = entries
+      .filter(
+        (entry) => entry.name && this.path.basename(entry.name) === entry.name
+      )
+      .map((entry) => ({ ...entry, path: this.path.join(dir, entry.name) }))
+      .filter(
+        (entry) => !this.scanPolicy || this.scanPolicy.allows(entry.path)
+      );
+    // Mounts and link replacements need not change the parent's mtime.
+    return (
+      await mapLimit(listing, 32, async (entry) => {
+        if (entry.type !== 'dir') {
+          return entry;
+        }
+        const fresh = await this.stat(entry.path);
+        return fresh ? { ...entry, ...fresh } : null;
+      })
+    ).filter(Boolean);
+  }
+
+  /** Source activity excludes generated trees, and stops as soon as recent work is seen. */
+  async projectActivity(project, globs, since) {
+    let newest = 0;
+    let frontier = [project];
+    const device = await this.deviceId(project);
+    while (frontier.length && newest < since) {
+      const children = await mapLimit(frontier, 8, async (dir) => {
+        checkSignal(this.signal);
+        const next = [];
+        for (const entry of await this.list(dir)) {
+          if (entry.type === 'dir') {
+            if (
+              !this.skipDiscoveryDirectory(dir, entry.name) &&
+              !globs.some((glob) => matchesGlob(entry.name, glob)) &&
+              entry.device === device
+            ) {
+              next.push(entry.path);
+            }
+          } else if (entry.type === 'file') {
+            newest = Math.max(newest, entry.mtimeMs);
+          }
+        }
+        return next;
+      });
+      frontier = children.flat();
+    }
+    return newest;
+  }
+
+  async usageMany(targets, options) {
+    const usages = await this.rawUsageMany(targets, options);
     return this.writableLayer
       ? this.writableLayer.measure(this, usages)
       : usages;
   }
 
-  async rawUsageMany(targets) {
-    const usages = new Map();
-    for (const target of targets) {
-      usages.set(target, await this.rawUsage(target));
+  async rawUsageMany(targets, { mtime = true, cache = false } = {}) {
+    const entries = await mapLimit([...new Set(targets)], 4, async (target) => [
+      target,
+      !this.writableLayer && cache
+        ? await this.cachedUsage(target, mtime)
+        : !mtime && !this.writableLayer
+          ? await this.quickUsage(target)
+          : await this.rawUsage(target),
+    ]);
+    return new Map(entries);
+  }
+
+  async cachedUsage(target, mtime) {
+    const stats = await this.stat(target);
+    if (!stats) {
+      return null;
     }
-    return usages;
+    const key = `usage:${mtime}:${target}`;
+    const fingerprint = `${directoryFingerprint(stats)}:${JSON.stringify([this.scanPolicy?.exclude, this.scanPolicy?.pruned])}`;
+    const cached = this.scanIndex?.get(key, fingerprint, SIZE_MAX_AGE);
+    if (cached) {
+      this.scanMetrics.sizeCacheHits++;
+      return { ...cached, estimated: true };
+    }
+    const usage = mtime
+      ? await this.rawUsage(target)
+      : await this.quickUsage(target);
+    if (usage && !usage.errors) {
+      this.scanIndex?.set(key, fingerprint, usage);
+    }
+    return usage;
+  }
+
+  async quickUsage(target) {
+    const stats = await this.stat(target);
+    if (!stats) {
+      return null;
+    }
+    // du cannot enforce path-glob exclusions or detect a nested mount beneath a candidate.
+    if (
+      this.platform === 'win32' ||
+      this.scanPolicy?.exclude.length ||
+      this.scanPolicy?.mounts.some(
+        (mount) =>
+          mount.path !== '/' && mount.path.startsWith(`${target}${path.sep}`)
+      )
+    ) {
+      return this.rawUsage(target);
+    }
+    const result = await this.run(['du', '-skx', target]);
+    const match = /^\s*(\d+)\s/.exec(result.stdout);
+    if (result.code !== 0 || !match) {
+      return this.rawUsage(target);
+    }
+    const usage = {
+      bytes: Number(match[1]) * 1024,
+      apparentBytes: Number(match[1]) * 1024,
+      newestMtimeMs: 0,
+      files: 0,
+      errors: 0,
+    };
+    if (this.scanMetrics) {
+      this.scanMetrics.directoriesSized++;
+    }
+    return usage;
   }
 
   async readLink(target) {
