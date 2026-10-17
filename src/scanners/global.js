@@ -2,7 +2,8 @@ import { scanItems } from '../env/scope.js';
 /**
  * Global per-user caches (ecosystem download and compilation caches, IDE and
  * browser caches), system package caches, and leftovers in temporary
- * directories. See ../rules/ecosystems.js and ../rules/other.js.
+ * directories. See ../rules/ecosystems.js, ../rules/other.js and
+ * ../rules/downloads.js.
  */
 
 import { CACHE_RULES } from '../rules/ecosystems.js';
@@ -14,6 +15,7 @@ import { expandGlobPaths, expandRulePath, isWithin } from '../paths.js';
 import { olderThan, scanTimeBusy, resolvePaths } from './common.js';
 import { configuredPattern } from '../env/cache-roots.js';
 import { TOOLCHAIN_CACHE_RULES } from '../rules/toolchains.js';
+import { DOWNLOAD_RULES } from '../rules/downloads.js';
 import { timed } from '../timings.js';
 
 export const GLOBAL_RULES = [
@@ -21,6 +23,7 @@ export const GLOBAL_RULES = [
   ...expandChromiumCaches(OTHER_RULES),
   ...APP_RULES,
   ...TOOLCHAIN_CACHE_RULES,
+  ...DOWNLOAD_RULES,
 ];
 
 function scopeBases(rule, homes, tmpDirs) {

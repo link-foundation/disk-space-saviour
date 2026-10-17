@@ -109,7 +109,13 @@ Opera GX, Vivaldi, Arc, Yandex Browser, Naver Whale, 360, QQ Browser, Firefox,
 LibreWolf, Waterfox, Zen and Floorp, IDE caches (JetBrains, VS Code, Cursor,
 Windsurf, Qoder), AI agent caches and logs, the Discord cache, macOS app
 updates staged by Sparkle and Squirrel, package manager archives, trash, crash
-reports, core dumps and journald logs. Telegram pure caches, Safari/WebKit,
+reports, core dumps and journald logs. Application downloads are covered too:
+Chrome bundle clones left by exited browsers, superseded Chrome on-device
+models, Google Updater installers, ChatGPT Atlas and Codex app caches,
+Electron and electron-builder archives, the Bun transpiler cache, Docker
+Desktop and Warp staged updates (kept while the app runs), Zed language
+servers, tree-sitter toolchains, Codex plugin staging, the Clang module cache
+and processed Crashpad reports. Telegram pure caches, Safari/WebKit,
 Chromium code/GPU/Dawn/service-worker caches and marker-validated Electron
 caches are included. Telegram databases, browser profiles and Playwright MCP
 profiles are preserved. macOS access failures explain when Full Disk Access

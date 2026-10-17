@@ -167,9 +167,13 @@ export function expandChromiumCaches(rules) {
             CACHE_LEAVES.map((leaf) => `${p}/${leaf}`)
           ),
           ...roots.flatMap((p) =>
-            ['GrShaderCache', 'ShaderCache', 'component_crx_cache'].map(
-              (leaf) => `${p}/${leaf}`
-            )
+            [
+              'GrShaderCache',
+              'ShaderCache',
+              'GraphiteDawnCache',
+              'component_crx_cache',
+              'extensions_crx_cache',
+            ].map((leaf) => `${p}/${leaf}`)
           ),
         ]),
       ],
