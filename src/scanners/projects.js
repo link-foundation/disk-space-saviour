@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+
 import { scanItems } from '../env/scope.js';
 /**
  * Per-project dependency, build and cache directories (node_modules, target,
@@ -16,8 +18,9 @@ import { scanItems } from '../env/scope.js';
 import { ECOSYSTEMS, PROJECT_RULES } from '../rules/ecosystems.js';
 import { block, makeItem } from '../items.js';
 import { isWithin, matchesGlob } from '../paths.js';
-import { listMany, olderThan, scanTimeBusy } from './common.js';
+import { listMany, scanTimeBusy } from './common.js';
 import { analyzeRustProfile, findRustProfiles } from './rust.js';
+import { timed } from '../timings.js';
 
 const ECOSYSTEM_NAMES = new Map(ECOSYSTEMS.map((e) => [e.id, e.name]));
 
@@ -183,106 +186,38 @@ export async function findProjectDirs(env, roots, options = {}) {
   return matches;
 }
 
-function siblingActivity(candidate, globs) {
-  return (candidate.siblings ?? [])
-    .filter(
-      (entry) =>
-        entry.name !== candidate.name &&
-        !globs.some((glob) => matchesGlob(entry.name, glob))
-    )
-    .reduce((newest, entry) => Math.max(newest, entry.mtimeMs ?? 0), 0);
-}
-
-function projectTier(context, rule, lastActivityMs) {
-  if (rule.kind === 'cache') {
-    return { tier: 'safe', reason: 'cache, re-created on demand' };
-  }
-  const { inactiveMs } = context.options;
-  if (olderThan(context, lastActivityMs, inactiveMs)) {
-    return {
-      tier: rule.id === 'node-modules' ? 'safe' : 'moderate',
-      reason: 'project inactive, re-created by the build or install step',
-    };
-  }
-  return {
-    tier: 'aggressive',
-    reason: 'project recently active, re-created by the build or install step',
-  };
-}
-
-/** Re-evaluate activity before cleaning a reused project plan. */
-export async function currentProjectTier(context, item) {
-  const rule = PROJECT_RULES.find((entry) => entry.id === item.rule);
-  if (!rule || rule.kind === 'cache') {
-    return item.tier;
-  }
-  const globs = [...new Set(PROJECT_RULES.flatMap((entry) => entry.names))];
-  const parent = context.env.path.dirname(item.path);
-  const candidate = {
-    name: context.env.path.basename(item.path),
-    siblings: await context.env.list(parent),
-  };
-  context.git.invalidate();
-  const activity = await projectActivity(
-    context,
-    item.project,
-    candidate,
-    { newestMtimeMs: item.newestMtimeMs },
-    globs
-  );
-  return projectTier(context, rule, activity).tier;
+/**
+ * Project caches, build outputs and dependencies are all regenerable, so how
+ * recently the project was used does not matter: only liveness (a tool
+ * running in the project, open files, recent writes) and Git safety block
+ * them.
+ */
+function projectTier(rule) {
+  return rule.kind === 'cache'
+    ? { tier: 'safe', reason: 'cache, re-created on demand' }
+    : { tier: 'safe', reason: 're-created by the build or install step' };
 }
 
 async function addBlockers(context, item, requireClean) {
-  for (const reason of await context.git.pathBlockers(item.path, {
-    requireClean,
-  })) {
+  const reasons = await timed(context.timings, 'projects:git', () =>
+    context.git.pathBlockers(item.path, { requireClean })
+  );
+  for (const reason of reasons) {
     block(item, reason);
   }
-  const busy = await scanTimeBusy(context, item);
+  const busy = await timed(context.timings, 'projects:busy', () =>
+    scanTimeBusy(context, item)
+  );
   if (busy) {
     block(item, `busy: ${busy}`);
   }
 }
 
-async function projectActivity(context, project, candidate, usage, globs) {
-  const { env, git } = context;
-  const repo = await git.findRepoRoot(project);
-  const lastCommitMs = repo ? (await git.repoState(repo)).lastCommitMs : 0;
-  context.projectUsage ??= new Map();
-  if (!context.projectUsage.has(project)) {
-    context.projectUsage.set(
-      project,
-      env.projectActivity
-        ? await env.projectActivity(
-            project,
-            globs,
-            context.now - context.options.inactiveMs
-          )
-        : (await env.usage(project))?.newestMtimeMs
-    );
-  }
-  const projectUsage = context.projectUsage.get(project);
-  return Math.max(
-    usage?.newestMtimeMs ?? 0,
-    projectUsage ?? 0,
-    siblingActivity(candidate, globs),
-    lastCommitMs
-  );
-}
-
-async function projectItem(context, { candidate, rule }, usage, globs) {
+async function projectItem(context, { candidate, rule }, usage) {
   const { env } = context;
   const project = rule.parentName
     ? env.path.dirname(candidate.parent)
     : candidate.parent;
-  const lastActivityMs = await projectActivity(
-    context,
-    project,
-    candidate,
-    usage,
-    globs
-  );
   const item = makeItem(env, {
     rule: rule.id,
     kind: rule.kind,
@@ -292,10 +227,9 @@ async function projectItem(context, { candidate, rule }, usage, globs) {
     bytes: usage?.bytes ?? 0,
     sizeEstimated: Boolean(usage?.estimated),
     newestMtimeMs: usage?.newestMtimeMs ?? 0,
-    lastActivityMs,
     project,
     lockfiles: rule.lockfiles ?? null,
-    ...projectTier(context, rule, lastActivityMs),
+    ...projectTier(rule),
     checks: { busy: rule.busy ?? [], cwd: project, mtime: true },
   });
   await addBlockers(context, item, false);
@@ -397,29 +331,51 @@ async function rustItems(context, targetItem, rule) {
  */
 export async function scanProjects(context, { rules = PROJECT_RULES } = {}) {
   const { env, options } = context;
-  const globs = [...new Set(rules.flatMap((rule) => rule.names))];
   const items = scanItems(context);
-  await findProjectDirs(env, options.roots, {
-    rules,
-    maxDepth: options.maxDepth,
-    includeRoots: options.includeRoots,
-    onMatches: async (matches) => {
-      const usages = await env.usageMany(
-        matches.map((match) => match.candidate.path),
-        { cache: true }
-      );
-      for (const match of matches) {
-        const usage = usages.get(match.candidate.path);
-        if (!usage) {
-          continue;
+  const started = performance.now();
+  // Matches are measured while the walk continues; `projects:walk` excludes
+  // that time, which `projects:measure`, `projects:git` and `projects:busy`
+  // record.
+  let streamedMs = 0;
+  try {
+    await findProjectDirs(env, options.roots, {
+      rules,
+      maxDepth: options.maxDepth,
+      includeRoots: options.includeRoots,
+      onMatches: async (matches) => {
+        const streamStarted = performance.now();
+        try {
+          await projectMatches(context, matches, items);
+        } finally {
+          streamedMs += performance.now() - streamStarted;
         }
-        const item = await projectItem(context, match, usage, globs);
-        items.push(item);
-        if (match.rule.id === 'cargo-target') {
-          items.push(...(await rustItems(context, item, match.rule)));
-        }
-      }
-    },
-  });
+      },
+    });
+  } finally {
+    context.timings?.record(
+      'projects:walk',
+      performance.now() - started - streamedMs
+    );
+  }
   return items;
+}
+
+async function projectMatches(context, matches, items) {
+  const usages = await timed(context.timings, 'projects:measure', () =>
+    context.env.usageMany(
+      matches.map((match) => match.candidate.path),
+      { cache: true }
+    )
+  );
+  for (const match of matches) {
+    const usage = usages.get(match.candidate.path);
+    if (!usage) {
+      continue;
+    }
+    const item = await projectItem(context, match, usage);
+    items.push(item);
+    if (match.rule.id === 'cargo-target') {
+      items.push(...(await rustItems(context, item, match.rule)));
+    }
+  }
 }

@@ -6,7 +6,9 @@ import { scanItems } from '../env/scope.js';
  * Kept: the manager's default and alias targets, versions pinned by any
  * project below the scan roots, the newest install of each group, and
  * anything a running process executes from (checked by the liveness probe).
- * Everything else is reported as `moderate`.
+ * Everything else is reported as `moderate`, and blocked while it holds
+ * data that reinstalling the version would not bring back (pyenv virtual
+ * environments, globally installed npm packages).
  */
 
 import {
@@ -171,6 +173,98 @@ function newestInstalls(env, rule, installs, usages) {
   return newest;
 }
 
+/**
+ * Follows a chain of manager aliases (`default` -> `lts/iron` -> `v20.20.2`).
+ * An LTS alias also keeps its release line: nvm records the newest remote
+ * release there, which may not be the one installed.
+ * @returns {Promise<string[]>}
+ */
+async function resolveAlias(env, aliasDir, ref) {
+  const refs = [ref];
+  let current = ref;
+  for (let hop = 0; hop < 8 && !/^v?\d/.test(current); hop++) {
+    if (current.split('/').some((part) => part === '..' || part === '')) {
+      break;
+    }
+    const text = await env.readText(env.path.join(aliasDir, current), 4096);
+    const next = (text ?? '').split(/\s+/).find(Boolean);
+    if (!next || refs.includes(next)) {
+      break;
+    }
+    refs.push(next);
+    current = next;
+  }
+  if (ref.startsWith('lts/') && /^v?\d/.test(current)) {
+    refs.push(current.replace(/^v?(\d+).*$/, 'v$1'));
+  }
+  return refs;
+}
+
+async function resolveAliases(env, rule, home, refs) {
+  if (!rule.aliasDir) {
+    return refs;
+  }
+  const aliasDir = expandRulePath(configuredPattern(env, home, rule.aliasDir), {
+    home,
+    pathApi: env.path,
+  });
+  const resolved = [];
+  for (const ref of refs) {
+    resolved.push(...(await resolveAlias(env, aliasDir, ref)));
+  }
+  return [...new Set(resolved)];
+}
+
+/**
+ * Installs that the refs keep. With `refsPickNewest` a ref keeps only the
+ * newest install it matches, as nvm resolves `20` to the newest 20.x.
+ * @returns {Set<string>}
+ */
+function referencedInstalls(rule, installs, refs, versionOf) {
+  const kept = new Set();
+  for (const ref of refs) {
+    const matching = installs
+      .filter((dir) => versionMatches(versionOf(dir), ref))
+      .sort((a, b) => compareVersions(versionOf(b), versionOf(a)));
+    for (const dir of rule.refsPickNewest ? matching.slice(0, 1) : matching) {
+      kept.add(dir);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Global packages a user installed into a version (`npm install -g`) are
+ * lost with it. Packages bundled with the runtime and caches that are
+ * installed again on demand (`rule.globalPackages.regenerable`) are not.
+ */
+async function blockGlobalPackages(env, rule, dir, item) {
+  if (!rule.globalPackages) {
+    return;
+  }
+  const names = [];
+  const root = env.path.join(dir, rule.globalPackages.dir);
+  for (const entry of await env.list(root)) {
+    if (entry.name.startsWith('.')) {
+      continue;
+    }
+    if (!entry.name.startsWith('@')) {
+      names.push(entry.name);
+      continue;
+    }
+    const scoped = await env.list(entry.path);
+    names.push(...scoped.map((child) => `${entry.name}/${child.name}`));
+  }
+  const own = names
+    .filter((name) => !rule.globalPackages.regenerable(name))
+    .sort();
+  if (own.length > 0) {
+    const shown = own.slice(0, 5).join(', ');
+    const more = own.length > 5 ? ` and ${own.length - 5} more` : '';
+    block(item, `has globally installed packages: ${shown}${more}`);
+  }
+}
+
 async function blockPyenvEnvironments(env, rule, dir, item) {
   if (rule.id !== 'pyenv-python') {
     return;
@@ -189,17 +283,21 @@ async function ruleItems(context, rule, home, pins) {
   if (rule.protectAll) {
     return [];
   }
-  const refs = [...(await managerRefs(env, rule, home, installs)), ...pins];
+  const refs = await resolveAliases(env, rule, home, [
+    ...(await managerRefs(env, rule, home, installs)),
+    ...pins,
+  ]);
   const usages = await env.usageMany(installs, {
     cache: !context.options.freshSizes,
   });
   await resolvePaths(context, installs);
   const newest = newestInstalls(env, rule, installs, usages);
   const versionOf = rule.versionOf ?? ((dir) => env.path.basename(dir));
+  const referenced = referencedInstalls(rule, installs, refs, versionOf);
   const items = scanItems(context);
   for (const dir of installs) {
     const version = versionOf(dir);
-    if (newest.has(dir) || refs.some((ref) => versionMatches(version, ref))) {
+    if (newest.has(dir) || referenced.has(dir)) {
       continue;
     }
     const usage = usages.get(dir) ?? {};
@@ -222,6 +320,7 @@ async function ruleItems(context, rule, home, pins) {
           : null,
     });
     await blockPyenvEnvironments(env, rule, dir, item);
+    await blockGlobalPackages(env, rule, dir, item);
     const busy = await scanTimeBusy(context, item);
     if (busy) {
       block(item, `busy: ${busy}`);

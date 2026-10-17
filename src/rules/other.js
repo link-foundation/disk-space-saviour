@@ -349,8 +349,11 @@ export const OTHER_RULES = [
     ecosystem: 'agents',
     description: 'abandoned Codex runtime install staging directories',
     paths: ['~/.cache/codex-runtimes/codex-runtime-install-*'],
+    // The Codex daemon runs for days, so a running `codex` says nothing
+    // about a staging directory: an install in progress writes to it and
+    // holds its files open, which the activity window and open-file checks
+    // catch.
     minAge: 'stale',
-    busy: ['codex'],
   },
   {
     id: 'claude-cli-mcp-logs',

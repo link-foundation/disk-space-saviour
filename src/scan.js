@@ -32,6 +32,7 @@ import {
   ScanIndex,
   scopeKey,
 } from './scan-state.js';
+import { PhaseTimer, timed } from './timings.js';
 
 export const SCANNERS = {
   projects: scanProjects,
@@ -266,6 +267,12 @@ export async function scanEnvironment(env, options, extra = {}) {
   }
 }
 
+/** Phase timings of an environment, started on its first scan. */
+function environmentTimings(env) {
+  env.timings ??= new PhaseTimer();
+  return env.timings;
+}
+
 async function scanEnvironmentScoped(
   env,
   options,
@@ -275,11 +282,14 @@ async function scanEnvironmentScoped(
   stage
 ) {
   const errors = extra.errors ?? [];
-  const context = await environmentContext(env, options, extra);
+  const context = await environmentTimings(env).measure('context', () =>
+    environmentContext(env, options, extra)
+  );
+  context.timings = env.timings;
   context.emit = (item) => found.set(item.id, item);
   let stopped = false;
   const ready = async (items) => {
-    await attributeStorage(env, items);
+    await env.timings.measure('storage', () => attributeStorage(env, items));
     for (const item of items) {
       for (const target of item.paths) {
         block(item, env.scanPolicy.removalReason(target));
@@ -324,7 +334,9 @@ async function scanEnvironmentScoped(
     const started = Date.now();
     const previous = new Set(found.keys());
     try {
-      const entries = await scanner(context);
+      const entries = await env.timings.measure(`scanner:${name}`, () =>
+        scanner(context)
+      );
       for (const item of entries) {
         context.emit(item);
       }
@@ -480,6 +492,7 @@ function envDescriptor(env, depth, chain) {
     hint: env.probeHint ?? null,
     scanStatus: env.scanStatus ?? null,
     layerSource: env.writableLayer?.source ?? null,
+    timings: env.timings?.toJSON() ?? [],
   };
 }
 
@@ -590,6 +603,7 @@ async function scanScoped(input) {
   resetWritableLayers(env.executor);
   env.writableLayer = null;
   env.scanPolicy = null;
+  env.timings = new PhaseTimer();
   await configureScanPolicy(env, options);
   await configureContainerHost(
     env,
@@ -603,7 +617,9 @@ async function scanScoped(input) {
   const docker =
     env.scanStatus === 'goal-reached'
       ? null
-      : await dockerSection(env, options, errors);
+      : await timed(env.timings, 'docker', () =>
+          dockerSection(env, options, errors)
+        );
   blockMountedHostItems(hostItems, docker?.bindMounts ?? [], env.path);
   const items = filterItems(
     [...hostItems, ...(docker?.items ?? [])],
@@ -615,7 +631,10 @@ async function scanScoped(input) {
   for (const inner of docker?.environments ?? []) {
     environments.push(inner);
   }
-  environments[0] = await withDisk(env, environments[0]);
+  environments[0] = await timed(env.timings, 'disk', () =>
+    withDisk(env, environments[0])
+  );
+  environments[0].timings = env.timings.toJSON();
   const report = buildReport({
     options,
     env,

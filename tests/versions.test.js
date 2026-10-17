@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'test-anywhere';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { compareVersions } from '../src/rules/versions.js';
@@ -55,6 +56,51 @@ describe('version manager pruning', () => {
         expect(
           paths.some((target) => target.startsWith(join(home, '.opam')))
         ).toBe(false);
+      } finally {
+        removeRoot(root);
+      }
+    }
+  );
+
+  itUnless(sandboxed)(
+    'resolves nvm refs to the newest match and keeps user globals',
+    async () => {
+      const root = tempRoot('dss-versions-nvm-');
+      try {
+        const home = join(root, 'home');
+        const nvm = join(home, '.nvm');
+        const node = (version, ...globals) => {
+          const dir = join(nvm, 'versions', 'node', version);
+          writeBlob(join(dir, 'bin', 'node'));
+          for (const name of ['npm', 'corepack', ...globals]) {
+            writeBlob(join(dir, 'lib', 'node_modules', name, 'package.json'));
+          }
+          return dir;
+        };
+        const old20 = node('v20.15.1', 'lodash-v-4.17.21');
+        const new20 = node('v20.19.4', 'yarn');
+        const tool = node('v18.20.3', 'yarn', '@openapitools/generator');
+        const lts = node('v16.20.1');
+        const newest = node('v24.18.0');
+        mkdirSync(join(nvm, 'alias', 'lts'), { recursive: true });
+        writeFileSync(join(nvm, 'alias', 'default'), '20\n');
+        writeFileSync(join(nvm, 'alias', 'lts', 'gallium'), 'v16.20.2\n');
+        mkdirSync(join(root, 'app'));
+        writeFileSync(join(root, 'app', '.nvmrc'), 'lts/gallium\n');
+        age(root, 40 * DAY_MS);
+        const report = await scan(
+          scanInput(fixtureEnv(root), [join(root, 'app')], {
+            scanners: ['versions'],
+          })
+        );
+        const items = new Map(report.items.map((item) => [item.path, item]));
+        expect(items.has(new20)).toBe(false);
+        expect(items.has(newest)).toBe(false);
+        expect(items.has(lts)).toBe(false);
+        expect(items.get(old20)?.blockers).toEqual([]);
+        expect(items.get(tool)?.blockers).toEqual([
+          'has globally installed packages: @openapitools/generator, yarn',
+        ]);
       } finally {
         removeRoot(root);
       }

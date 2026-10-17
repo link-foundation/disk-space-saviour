@@ -34,7 +34,7 @@ export interface ScanOptions {
   staleAge?: Duration;
   /** Alias of `staleAge`. */
   olderThan?: Duration;
-  /** Inactivity before lockfile-backed node_modules become `safe`, other dependency dirs `moderate` (`30d`). */
+  /** Idle time before agent scratch and similar leftovers count as abandoned (`30d`). Project build and dependency directories do not depend on it. */
   inactive?: Duration;
   /** Items smaller than this are dropped (`1M`). */
   minSize?: Size;

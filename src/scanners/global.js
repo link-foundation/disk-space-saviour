@@ -14,6 +14,7 @@ import { expandGlobPaths, expandRulePath, isWithin } from '../paths.js';
 import { olderThan, scanTimeBusy, resolvePaths } from './common.js';
 import { configuredPattern } from '../env/cache-roots.js';
 import { TOOLCHAIN_CACHE_RULES } from '../rules/toolchains.js';
+import { timed } from '../timings.js';
 
 export const GLOBAL_RULES = [
   ...CACHE_RULES,
@@ -242,9 +243,11 @@ export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
       patterns: rulePatterns(env, rule, base),
     }))
   );
-  const matches = await expandGlobPaths(
-    env,
-    planned.flatMap((entry) => entry.patterns)
+  const matches = await timed(context.timings, 'global:expand', () =>
+    expandGlobPaths(
+      env,
+      planned.flatMap((entry) => entry.patterns)
+    )
   );
   const typedPaths = planned
     .filter(
@@ -253,7 +256,9 @@ export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
     .flatMap(({ patterns }) =>
       patterns.flatMap((pattern) => matches.get(pattern) ?? [])
     );
-  const stats = await env.statMany([...new Set(typedPaths)]);
+  const stats = await timed(context.timings, 'global:stat', () =>
+    env.statMany([...new Set(typedPaths)])
+  );
   const found = [];
   const seen = new Set();
   for (const { rule, base, patterns } of planned) {
@@ -263,7 +268,11 @@ export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
 
     const accepted = [];
     for (const target of candidates) {
-      if (!(await acceptedPath(env, rule, target, stats))) {
+      if (
+        !(await timed(context.timings, 'global:accept', () =>
+          acceptedPath(env, rule, target, stats)
+        ))
+      ) {
         continue;
       }
       accepted.push(target);
@@ -274,9 +283,11 @@ export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
       found.push({ rule, base, paths });
     }
   }
-  await resolvePaths(
-    context,
-    found.flatMap((entry) => entry.paths)
+  await timed(context.timings, 'global:resolve', () =>
+    resolvePaths(
+      context,
+      found.flatMap((entry) => entry.paths)
+    )
   );
   const items = scanItems(context);
   // Deliver cheap native measurements before rules needing recursive activity
@@ -284,20 +295,27 @@ export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
   found.sort(
     (a, b) => Number(requiresMtime(a.rule)) - Number(requiresMtime(b.rule))
   );
+  // The report drops items below `minSize`; skipping them here saves their
+  // liveness checks (Telegram media alone can hold 100k small files). In a
+  // container the writable layer re-measures sizes later, so all are kept.
+  const large = (entry) =>
+    Boolean(env.writableLayer) ||
+    entry.usage.bytes >= (options.minSizeBytes ?? 0);
   for (const { rule, base, paths } of found) {
-    const usages = await env.usageMany(paths, {
-      mtime: requiresMtime(rule),
-      cache: true,
-    });
+    const usages = await timed(context.timings, 'global:measure', () =>
+      env.usageMany(paths, { mtime: requiresMtime(rule), cache: true })
+    );
     const accept = ageFilter(context, rule);
     const measured = paths
       .map((target) => ({ path: target, usage: usages.get(target) }))
       .filter((entry) => entry.usage && accept(entry.usage));
     const groups = rule.aggregate
       ? [measured]
-      : measured.map((entry) => [entry]);
+      : measured.filter(large).map((entry) => [entry]);
     for (const group of groups.filter((g) => g.length > 0)) {
-      const item = await buildItem(context, rule, base, group);
+      const item = await timed(context.timings, 'global:item', () =>
+        buildItem(context, rule, base, group)
+      );
       items.push(item);
       if ((await context.ready?.([item])) === false) {
         return items;

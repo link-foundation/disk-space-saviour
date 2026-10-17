@@ -18,6 +18,7 @@ import { LocalEnv } from './env/local.js';
 import { TIERS, selectByTier, tierRank } from './items.js';
 import { resolveGoal, resolveOptions } from './options.js';
 import { revalidateReport, scan } from './scan.js';
+import { PhaseTimer } from './timings.js';
 
 /**
  * Used percentage the way `df` prints it: used / (used + available).
@@ -86,6 +87,8 @@ export async function emergency(input = {}) {
     path: target,
     diskBefore,
     bytesNeeded: bytesNeeded(goal, diskBefore),
+    // Shared by every cleanup pass of a streamed scan.
+    timings: new PhaseTimer(),
   });
   const report = input.report
     ? await revalidateReport(input.report, { ...input, env })
@@ -150,6 +153,7 @@ async function escalate({ report, options, env, target, goal, audit }) {
     env,
     onProgress: persistProgress,
     priorHealth: audit.health,
+    timings: audit.timings,
   });
   audit.health = cleaner.health.records;
   const done = new Set(audit.entries.map((entry) => entry.id));

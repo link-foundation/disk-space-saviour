@@ -323,7 +323,7 @@ describe('dss on real files', () => {
       const scanned = fakeIo();
       expect(await runCli(['scan', ...common], { io: scanned, api })).toBe(0);
       expect(scanned.out[0]).toMatch(/nothing was deleted/);
-      expect(scanned.out[0]).toMatch(/MODERATE {2}1 item/);
+      expect(scanned.out[0]).toMatch(/SAFE {2}1 item/);
       expect(scanned.out[0]).toContain(vendor);
 
       const planned = fakeIo();

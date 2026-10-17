@@ -8,9 +8,8 @@
  *
  * `projects` are directories inside project trees, recognised by name plus a
  * marker file next to them (`markers`), inside them (`selfMarkers`), or next
- * to their parent (`parentMarkers`, with `parentName`). Kind `cache` is always
- * `safe`; `build` and `dependencies` are `moderate` after the project has been
- * inactive for the configured number of days and `aggressive` otherwise.
+ * to their parent (`parentMarkers`, with `parentName`). All kinds (`cache`,
+ * `build`, `dependencies`) are `safe` whenever nothing is using them.
  *
  * `busy` lists process names that, when running (inside the project for
  * project directories), mean the tool may be using the directory right now.
@@ -71,7 +70,9 @@ export const ECOSYSTEMS = [
         description: 'Bun install cache',
         paths: ['~/.bun/install/cache'],
         native: { tool: 'bun', argv: ['bun', 'pm', 'cache', 'rm'] },
-        busy: ['bun'],
+        // Only package commands and auto-installing scripts read the cache
+        // (see LivenessProbe.refresh).
+        busy: ['bun', 'bunx'],
       },
       {
         id: 'deno-cache',

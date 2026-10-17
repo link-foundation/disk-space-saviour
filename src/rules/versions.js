@@ -6,6 +6,11 @@
  * - the newest installed version,
  * - in use by a running process (checked by the liveness layer).
  *
+ * `refsPickNewest` makes a partial ref keep only the newest install it
+ * matches (nvm runs the newest 20.x for `20`); otherwise it keeps them all.
+ * `globalPackages` blocks versions holding packages the user installed
+ * globally, which reinstalling the version would not bring back.
+ *
  * `versionOf(dirPath)` maps an install directory to the version string that
  * defaults and pin files are compared with (see `versionMatches`).
  */
@@ -113,6 +118,16 @@ export const VERSION_RULES = [
     recheck: true,
   },
   {
+    id: 'codex-daemon-releases',
+    ecosystem: 'agents',
+    manager: 'Codex',
+    description: 'Codex app-server daemon release',
+    dirs: ['~/.codex/packages/app-server-daemon/releases/*'],
+    defaultLinks: ['~/.codex/packages/app-server-daemon/current'],
+    busy: ['codex'],
+    recheck: true,
+  },
+  {
     id: 'copilot-cli-versions',
     ecosystem: 'agents',
     manager: 'Copilot CLI',
@@ -133,6 +148,14 @@ export const VERSION_RULES = [
     aliasDir: '~/.nvm/alias',
     defaults: [{ path: '~/.nvm/alias/default', parse: firstLines }],
     projectFiles: { '.nvmrc': firstLines, '.node-version': firstLines },
+    refsPickNewest: true,
+    globalPackages: {
+      dir: 'lib/node_modules',
+      // Bundled with Node.js, or a use-m cache (`<name>-v-<version>`) that
+      // use-m installs again on first use.
+      regenerable: (name) =>
+        name === 'npm' || name === 'corepack' || /^[^@][^/]*-v-./.test(name),
+    },
     busy: ['node'],
   },
   {

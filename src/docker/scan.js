@@ -634,6 +634,7 @@ class DockerScan {
       scanStatus: env.scanStatus,
       hint: env.probeHint ?? null,
       layerSource: env.writableLayer?.source ?? null,
+      timings: env.timings?.toJSON() ?? [],
     });
     if (await env.which('docker')) {
       try {

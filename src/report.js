@@ -305,6 +305,52 @@ function errorsSection(errors) {
   ];
 }
 
+const TIMING_LIMIT = 5;
+
+function phaseList(phases) {
+  return phases
+    .map(
+      (phase) =>
+        `${phase.phase} ${(phase.ms / 1000).toFixed(1)}s${phase.count > 1 ? ` ×${phase.count}` : ''}`
+    )
+    .join(', ');
+}
+
+/**
+ * Slowest cleanup phases and items. `audit.timings` is a live PhaseTimer
+ * while cleaning and a plain array once read back from JSON.
+ */
+function auditTimingLines(audit, { verbose }) {
+  const phases = audit.timings?.toJSON?.() ?? audit.timings ?? [];
+  const items = audit.entries
+    .filter((entry) => entry.durationMs > 0)
+    .sort((a, b) => b.durationMs - a.durationMs);
+  const limit = verbose ? Infinity : TIMING_LIMIT;
+  const lines = [];
+  if (phases.length > 0) {
+    lines.push(`  slowest phases: ${phaseList(phases.slice(0, limit))}`);
+  }
+  for (const entry of items.slice(0, limit)) {
+    lines.push(
+      `  ${(entry.durationMs / 1000).toFixed(1)}s  ${entry.rule}  ${entry.path ?? entry.description}`
+    );
+  }
+  return lines.length > 0 ? ['', 'TIMINGS', ...lines] : [];
+}
+
+/**
+ * The slowest phases of each environment, so bottlenecks are visible
+ * without debug flags.
+ */
+function timingLines(report, { verbose }) {
+  return report.environments
+    .filter((env) => env.timings?.length > 0)
+    .map((env) => {
+      const phases = verbose ? env.timings : env.timings.slice(0, TIMING_LIMIT);
+      return `  ${env.label} slowest phases: ${phaseList(phases)}`;
+    });
+}
+
 /**
  * Renders a scan report.
  * @param {object} report
@@ -352,6 +398,10 @@ export function formatReport(report, options = {}) {
   lines.push(...dockerSection(report));
   lines.push(...errorsSection(report.errors));
   lines.push(...totalsSection(report));
+  const timings = timingLines(report, options);
+  if (timings.length > 0) {
+    lines.push('', 'TIMINGS', ...timings);
+  }
   return lines.join('\n');
 }
 
@@ -445,6 +495,7 @@ export function formatAudit(audit, options = {}) {
   }
   lines.push('', 'Per environment:', ...environmentLines(audit.environments));
   lines.push(...healthLines(audit.health));
+  lines.push(...auditTimingLines(audit, options));
   lines.push(
     '',
     audit.dryRun

@@ -8,7 +8,9 @@
  * - a process holds a file, working directory, or executable inside the path
  *   (`/proc/<pid>/{fd,cwd,exe}` on Linux, `lsof` on macOS).
  * - a command argument names a path inside the item (including scripts
- *   whose interpreter has already closed its input descriptor).
+ *   whose interpreter has already closed its input descriptor);
+ * - a directory inside the item is on a process's `PATH`, so the process
+ *   may start a program from it at any time.
  *
  * The cleaner refreshes the probe right before acting on each item.
  */
@@ -19,6 +21,44 @@ import { isWithin } from './paths.js';
 import { formatDuration } from './units.js';
 
 const PROC_COMM_LIMIT = 15;
+
+/** Bun subcommands that read or write the install cache. */
+const BUN_PACKAGE_COMMANDS = new Set([
+  'install',
+  'i',
+  'add',
+  'a',
+  'remove',
+  'rm',
+  'update',
+  'upgrade',
+  'outdated',
+  'link',
+  'unlink',
+  'pm',
+  'x',
+  'create',
+  'c',
+  'init',
+  'patch',
+  'publish',
+  'audit',
+  'why',
+  'info',
+]);
+
+function isBun(proc) {
+  return Boolean(matchingName(proc, ['bun', 'bunx']));
+}
+
+function bunPackageCommand(proc) {
+  const args = processArgs(proc);
+  if (path.posix.basename(args[0] ?? '') === 'bunx' || proc.name === 'bunx') {
+    return true;
+  }
+  const command = args.slice(1).find((arg) => !arg.startsWith('-'));
+  return BUN_PACKAGE_COMMANDS.has(command);
+}
 
 function uncertaintyRoots(proc) {
   const roots = processArgs(proc).flatMap((arg) => {
@@ -182,6 +222,7 @@ export class LivenessProbe {
     const processes = await this.env.processes().catch(() => null);
     this.listed = processes !== null;
     this.processes = processes ?? [];
+    this.bunCacheUsers = await this.#bunCacheUsers();
     this.probeError =
       (processes === null || this.openPaths === null) &&
       (this.env.platform === 'linux' || this.env.platform === 'darwin');
@@ -189,6 +230,49 @@ export class LivenessProbe {
     this.realPaths.clear();
     this.pathStats.clear();
     this.pathOwners.clear();
+  }
+
+  /**
+   * Pids of Bun processes that may use the install cache: package commands,
+   * and anything else (scripts, tests, the REPL) without a `node_modules`
+   * directory above its working directory, because Bun then auto-installs
+   * from the cache. A long-running script of an installed project does not
+   * read the cache, so it does not keep the cache busy.
+   */
+  async #bunCacheUsers() {
+    const users = new Set();
+    const installed = new Map();
+    const hasModules = async (dir) => {
+      if (!installed.has(dir)) {
+        installed.set(
+          dir,
+          Boolean(
+            await this.env.exists?.(this.env.path.join(dir, 'node_modules'))
+          )
+        );
+      }
+      return installed.get(dir);
+    };
+    for (const proc of this.processes) {
+      if (!isBun(proc)) {
+        continue;
+      }
+      if (bunPackageCommand(proc) || !proc.cwd || !this.env.exists) {
+        users.add(proc.pid);
+        continue;
+      }
+      let found = false;
+      for (const dir of [proc.cwd, ...ancestors(proc.cwd, this.env.path)]) {
+        if (await hasModules(dir)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        users.add(proc.pid);
+      }
+    }
+    return users;
   }
 
   /** Processes of the last refresh, or null when they could not be listed. */
@@ -269,6 +353,13 @@ export class LivenessProbe {
       ) {
         continue;
       }
+      if (
+        item.rule === 'bun-cache' &&
+        isBun(proc) &&
+        !this.bunCacheUsers?.has(proc.pid)
+      ) {
+        continue;
+      }
       const name = matchingName(proc, names);
       if (!name) {
         continue;
@@ -291,10 +382,7 @@ export class LivenessProbe {
       return null;
     }
     const pathApi = this.env.path;
-    const targets = paths.flatMap((target) => {
-      const real = this.realPaths.get(target);
-      return real && real !== target ? [target, real] : [target];
-    });
+    const targets = this.withRealPaths(paths);
     for (const open of this.openPaths) {
       for (const target of targets) {
         if (isWithin(open, target, pathApi)) {
@@ -334,6 +422,26 @@ export class LivenessProbe {
           paths.some((target) => isWithin(candidate, target, this.env.path))
         ) {
           return `in use: ${candidate} (pid ${proc.pid})`;
+        }
+      }
+    }
+    return null;
+  }
+
+  /** `paths` plus their resolved forms, as processes report paths. */
+  withRealPaths(paths) {
+    return paths.flatMap((target) => {
+      const real = this.realPaths.get(target);
+      return real && real !== target ? [target, real] : [target];
+    });
+  }
+
+  searchPathUsage(paths) {
+    const targets = this.withRealPaths(paths);
+    for (const proc of this.processes) {
+      for (const dir of proc.searchPath ?? []) {
+        if (targets.some((target) => isWithin(dir, target, this.env.path))) {
+          return `on the PATH of ${proc.name || 'a process'} (pid ${proc.pid}): ${dir}`;
         }
       }
     }
@@ -399,14 +507,28 @@ export class LivenessProbe {
     const paths = checks.perPath ? [] : (item.paths ?? []);
     return (
       this.installationBlocker(item.paths ?? []) ??
-      (this.probeError
-        ? `cannot verify process and open-file activity${this.env.probeDiagnostic ? `: ${this.env.probeDiagnostic}` : ''}`
-        : null) ??
+      this.probeBlocker() ??
       (checks.mtime === false ? null : this.recentWrite(item.newestMtimeMs)) ??
       this.runningTool(checks.busy, checks.cwd, item) ??
+      this.processUsage(paths) ??
+      this.uncertainUsage(item.paths ?? [])
+    );
+  }
+
+  probeBlocker() {
+    if (!this.probeError) {
+      return null;
+    }
+    const diagnostic = this.env.probeDiagnostic;
+    return `cannot verify process and open-file activity${diagnostic ? `: ${diagnostic}` : ''}`;
+  }
+
+  /** Open files, command arguments and PATH entries inside the paths. */
+  processUsage(paths) {
+    return (
       this.openInside(paths) ??
       this.commandUsage(paths) ??
-      this.uncertainUsage(item.paths ?? [])
+      this.searchPathUsage(paths)
     );
   }
 

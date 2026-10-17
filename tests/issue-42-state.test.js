@@ -331,7 +331,7 @@ describe('issue 42 fresh filesystem safeguards', () => {
   );
 
   itUnless(sandboxed)(
-    'protects projects that became active after the saved scan',
+    'protects dependencies written after the saved scan',
     async () => {
       const { root, input } = fixture();
       const rule = PROJECT_RULES.find((entry) => entry.id === 'node-modules');
@@ -342,11 +342,11 @@ describe('issue 42 fresh filesystem safeguards', () => {
         expect(saved.items.find((item) => item.path === candidate).tier).toBe(
           'safe'
         );
-        writeBlob(join(root, rule.id, 'src', 'new.js'));
+        writeBlob(join(candidate, 'fresh', 'index.js'));
         const audit = await clean(saved, { ...input, audit: false });
         expect(
           audit.entries.find((entry) => entry.path === candidate).reason
-        ).toMatch(/recently active/);
+        ).toMatch(/modified/);
         expect(existsSync(candidate)).toBe(true);
       } finally {
         removeRoot(root);

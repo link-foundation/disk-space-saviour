@@ -49,6 +49,40 @@ export function parseLsofCwds(output) {
 }
 
 /**
+ * Absolute directories of a `PATH` value.
+ * @param {string} value
+ * @returns {string[]}
+ */
+export function searchPathDirs(value) {
+  return (value ?? '').split(':').filter((dir) => dir.startsWith('/'));
+}
+
+/**
+ * `PATH` directories by pid from `ps -E -ww -axo pid=,command=` output,
+ * which appends the environment of the user's own processes to their
+ * arguments. A value ends at the first space, so a directory whose name
+ * contains one is not tracked.
+ * @param {string} output
+ * @returns {Map<number, string[]>}
+ */
+export function parsePsSearchPaths(output) {
+  const paths = new Map();
+  for (const line of output.split('\n')) {
+    const match = /^\s*(\d+)\s/.exec(line);
+    if (!match) {
+      continue;
+    }
+    const dirs = [...line.matchAll(/(?:^|\s)PATH=(\S*)/g)].flatMap((found) =>
+      searchPathDirs(found[1])
+    );
+    if (dirs.length > 0) {
+      paths.set(Number(match[1]), [...new Set(dirs)]);
+    }
+  }
+  return paths;
+}
+
+/**
  * Environment adapter for the machine running dss, backed by node:fs.
  *
  * Scanners only talk to environment adapters, so the same rules run on the
@@ -609,35 +643,6 @@ export class LocalEnv {
     ).filter(Boolean);
   }
 
-  /** Source activity excludes generated trees, and stops as soon as recent work is seen. */
-  async projectActivity(project, globs, since) {
-    let newest = 0;
-    let frontier = [project];
-    const device = await this.deviceId(project);
-    while (frontier.length && newest < since) {
-      const children = await mapLimit(frontier, 8, async (dir) => {
-        checkSignal(this.signal);
-        const next = [];
-        for (const entry of await this.list(dir)) {
-          if (entry.type === 'dir') {
-            if (
-              !this.skipDiscoveryDirectory(dir, entry.name) &&
-              !globs.some((glob) => matchesGlob(entry.name, glob)) &&
-              entry.device === device
-            ) {
-              next.push(entry.path);
-            }
-          } else if (entry.type === 'file') {
-            newest = Math.max(newest, entry.mtimeMs);
-          }
-        }
-        return next;
-      });
-      frontier = children.flat();
-    }
-    return newest;
-  }
-
   async usageMany(targets, options) {
     const usages = await this.rawUsageMany(targets, options);
     return this.writableLayer
@@ -789,6 +794,15 @@ export class LocalEnv {
             ).stdout
           )
         : new Map();
+    // A process may start programs from its PATH at any time without holding
+    // them open (for example a release directory of an updated tool).
+    const searchPaths =
+      this.platform === 'darwin'
+        ? parsePsSearchPaths(
+            (await this.run(['ps', '-E', '-ww', '-axo', 'pid=,command=']))
+              .stdout
+          )
+        : new Map();
     return result.stdout
       .split('\n')
       .map((line) => /^\s*(\d+)\s+(.+)$/.exec(line))
@@ -798,6 +812,7 @@ export class LocalEnv {
         name: path.basename(m[2].trim()),
         cwd: cwds.get(Number(m[1])) ?? null,
         command: commands.get(Number(m[1])) ?? '',
+        searchPath: searchPaths.get(Number(m[1])) ?? [],
       }))
       .filter((proc) => !selfPids.has(proc.pid));
   }
@@ -831,6 +846,9 @@ export class LocalEnv {
       const cmdline = await io
         .readFile(`${base}/cmdline`, 'utf8')
         .catch(() => '');
+      const environ = await io
+        .readFile(`${base}/environ`, 'utf8')
+        .catch(() => '');
       processes.push({
         pid: Number(pid),
         ...(await procIdentity(base, io)),
@@ -841,6 +859,12 @@ export class LocalEnv {
         aliases: processAliases(exe, cmdline.split('\0')[0]),
         command: cmdline.replaceAll('\0', ' '),
         argv: cmdline.split('\0').filter(Boolean),
+        searchPath: searchPathDirs(
+          environ
+            .split('\0')
+            .find((entry) => entry.startsWith('PATH='))
+            ?.slice('PATH='.length)
+        ),
       });
     }
     return processes;

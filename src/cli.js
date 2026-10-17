@@ -45,7 +45,7 @@ Scope:
   --scanner NAME             projects, global, versions, agents, system
   --min-size SIZE            ignore smaller items (default 1M)
   --older-than AGE           activity window, newer files are kept (1h)
-  --inactive AGE             project inactivity for moderate tier (30d)
+  --inactive AGE             idle time before agent scratch counts as abandoned (30d)
   --journal-keep SIZE        journald size to keep (512M)
 
 Goals (emergency):

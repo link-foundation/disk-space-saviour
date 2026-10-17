@@ -348,3 +348,26 @@ describe('liveness re-checks right before deleting', () => {
     }
   );
 });
+
+describe('linked Git worktrees', () => {
+  it('verifies ignored and tracked files without the repository config', async () => {
+    const root = tempRoot('dss-worktree-');
+    try {
+      const repo = pushedRepo(join(root, 'main'));
+      writeBlob(join(repo, 'tracked', 'keep.txt'), 16);
+      git(repo, 'add', 'tracked');
+      git(repo, 'commit', '-q', '-m', 'tracked');
+      const tree = join(root, 'linked');
+      git(repo, 'worktree', 'add', '-q', '-b', 'feature', tree);
+      writeBlob(join(tree, 'node_modules', 'left-pad', 'index.js'));
+      const inspector = new GitInspector(fixtureEnv(root));
+      expect(await inspector.pathBlockers(join(tree, 'node_modules'))).toEqual(
+        []
+      );
+      expect(await inspector.trackedCount(tree, join(tree, 'tracked'))).toBe(1);
+      expect((await inspector.repoState(tree)).error).toBe(null);
+    } finally {
+      removeRoot(root);
+    }
+  });
+});

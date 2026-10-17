@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
-import { runCli } from '../src/cli.js';
+// Scans are bound by file system calls, which run on libuv's thread pool
+// (4 threads by default). It is sized on first use, so set it before any
+// module that may touch the file system is loaded.
+process.env.UV_THREADPOOL_SIZE ??= '32';
+const { runCli } = await import('../src/cli.js');
 
 const controller = new AbortController();
 let received = null,

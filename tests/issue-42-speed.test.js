@@ -85,7 +85,7 @@ describe('issue 42 scan latency', () => {
   );
 
   itUnless(sandboxed)(
-    'never sizes a whole project again to derive activity',
+    'sizes only the dependency directory of an edited project',
     async () => {
       const root = tempRoot();
       try {
@@ -103,7 +103,7 @@ describe('issue 42 scan latency', () => {
         const report = await scan(
           scanInput(env, [root], { scanners: ['projects'] })
         );
-        expect(report.items[0].tier).toBe('aggressive');
+        expect(report.items[0].tier).toBe('safe');
         expect(measured).toEqual([candidate]);
       } finally {
         removeRoot(root);

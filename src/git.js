@@ -36,36 +36,77 @@ const SAFE_GIT_ENV = {
   GIT_TERMINAL_PROMPT: '0',
 };
 
-/** A metadata-only Git directory, with no repository-supplied config or hooks. */
-async function safeGitDirectory(root, callback) {
-  const source = path.join(root, '.git');
-  const stat = await fsp.lstat(source);
-  if (!stat.isDirectory()) {
-    throw new Error('cannot safely inspect a linked Git worktree');
+/**
+ * The checkout's own Git directory (HEAD, index) and the common directory
+ * holding refs and objects. Both are `<root>/.git` in a plain repository;
+ * a linked worktree or a submodule has a `.git` file naming its directory,
+ * and a linked worktree names the common directory in `commondir`.
+ */
+async function gitDirectories(root) {
+  const dotGit = path.join(root, '.git');
+  const stat = await fsp.lstat(dotGit);
+  let gitDir = dotGit;
+  if (stat.isFile()) {
+    const named = /^gitdir: (.+)$/m.exec(await fsp.readFile(dotGit, 'utf8'));
+    if (!named) {
+      throw new Error(`${dotGit} does not name a Git directory`);
+    }
+    gitDir = path.resolve(root, named[1].trim());
+  } else if (!stat.isDirectory()) {
+    throw new Error(`${dotGit} is neither a directory nor a gitdir file`);
   }
+  const commonDir = await fsp
+    .readFile(path.join(gitDir, 'commondir'), 'utf8')
+    .then(
+      (text) => path.resolve(gitDir, text.trim()),
+      (error) => {
+        if (error.code === 'ENOENT') {
+          return gitDir;
+        }
+        throw error;
+      }
+    );
+  if (!(await fsp.stat(path.join(commonDir, 'objects'))).isDirectory()) {
+    throw new Error(`${commonDir} has no object database`);
+  }
+  return { gitDir, commonDir };
+}
+
+async function copyGitMetadata(source, dir, names, force) {
+  for (const name of names) {
+    await fsp
+      .cp(path.join(source, name), path.join(dir, name), {
+        recursive: true,
+        force,
+        errorOnExist: !force,
+      })
+      .catch((error) => {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      });
+  }
+}
+
+/**
+ * A metadata-only Git directory, with no repository-supplied config or hooks.
+ * With `indexOnly`, refs and reflogs are left out: enough for `ls-files`,
+ * which reads only HEAD, the index and the work tree.
+ */
+async function safeGitDirectory(root, callback, { indexOnly = false } = {}) {
+  const { gitDir, commonDir } = await gitDirectories(root);
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'dss-safe-git-'));
   try {
-    for (const name of [
-      'HEAD',
-      'index',
-      'packed-refs',
-      'shallow',
-      'refs',
-      'logs',
-    ]) {
-      await fsp
-        .cp(path.join(source, name), path.join(dir, name), {
-          recursive: true,
-          force: false,
-          errorOnExist: true,
-        })
-        .catch((error) => {
-          if (error.code !== 'ENOENT') {
-            throw error;
-          }
-        });
+    if (indexOnly) {
+      await copyGitMetadata(gitDir, dir, ['HEAD', 'index'], false);
+      await fsp.mkdir(path.join(dir, 'refs'));
+    } else {
+      await copyIndexAndRefs(gitDir, commonDir, dir);
     }
-    await fsp.symlink(path.join(source, 'objects'), path.join(dir, 'objects'));
+    await fsp.symlink(
+      path.join(commonDir, 'objects'),
+      path.join(dir, 'objects')
+    );
     await fsp.writeFile(
       path.join(dir, 'config'),
       '[core]\n\trepositoryformatversion = 0\n\tbare = false\n'
@@ -74,6 +115,24 @@ async function safeGitDirectory(root, callback) {
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
+}
+
+async function copyIndexAndRefs(gitDir, commonDir, dir) {
+  await copyGitMetadata(
+    commonDir,
+    dir,
+    ['packed-refs', 'shallow', 'refs', 'logs'],
+    false
+  );
+  // Per-worktree state overrides the shared refs and reflogs.
+  await copyGitMetadata(
+    gitDir,
+    dir,
+    gitDir === commonDir
+      ? ['HEAD', 'index']
+      : ['HEAD', 'index', 'refs', 'logs'],
+    true
+  );
 }
 
 function countLines(text) {
@@ -310,19 +369,22 @@ export class GitInspector {
     try {
       const result =
         this.env.kind === 'host'
-          ? await safeGitDirectory(root, (safeDir) =>
-              this.#git(
-                root,
-                [
-                  'ls-files',
-                  '--cached',
-                  '--others',
-                  '--exclude-standard',
-                  '--',
-                  relative,
-                ],
-                safeDir
-              )
+          ? await safeGitDirectory(
+              root,
+              (safeDir) =>
+                this.#git(
+                  root,
+                  [
+                    'ls-files',
+                    '--cached',
+                    '--others',
+                    '--exclude-standard',
+                    '--',
+                    relative,
+                  ],
+                  safeDir
+                ),
+              { indexOnly: true }
             )
           : await this.#git(root, [
               'ls-files',

@@ -417,37 +417,6 @@ export class ShellEnv {
     ]);
   }
 
-  async projectActivity(project, globs) {
-    const prune = [
-      '-type',
-      'd',
-      '(',
-      ...findNameExpression([...new Set([...this.skipNames, ...globs])]),
-      ')',
-      '-prune',
-      '-o',
-    ];
-    const argv = [
-      'find',
-      project,
-      '-xdev',
-      ...this.#prunePaths(),
-      ...prune,
-      '-type',
-      'f',
-      '-exec',
-      'stat',
-      '-c',
-      '%Y',
-      '{}',
-      '+',
-    ];
-    const result = await this.sh(
-      `${argv.map(shellQuote).join(' ')} | awk 'BEGIN{m=0} {if ($1>m) m=$1} END{print m}'`
-    );
-    return Number(result.stdout.trim()) * 1000 || 0;
-  }
-
   /**
    * Runs one `find` that prints entries of `type` matching `globs` (without
    * descending into matched directories) and prunes `skipNames`.

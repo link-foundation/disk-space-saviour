@@ -70,11 +70,7 @@ describe('project rules find their fixture project', () => {
         );
         expect(item?.path).toBe(dirs.get(rule.id));
         expect(item.ecosystem).toBe(rule.ecosystem);
-        expect(item.tier).toBe(
-          rule.kind === 'cache' || rule.id === 'node-modules'
-            ? 'safe'
-            : 'moderate'
-        );
+        expect(item.tier).toBe('safe');
         expect(item.blockers).toEqual([]);
         expect(item.bytes >= 64 * 1024).toBe(true);
         expect(item.action).toEqual({ type: 'remove', paths: [item.path] });
@@ -99,7 +95,7 @@ describe('project rules find their fixture project', () => {
 
 describe('project activity and markers', () => {
   itUnless(sandboxed)(
-    'counts recent writes in nested source directories',
+    'does not hold dependencies back for recent writes in project sources',
     async () => {
       const root = tempRoot('dss-nested-activity-');
       try {
@@ -110,9 +106,11 @@ describe('project activity and markers', () => {
         const report = await scan(
           scanInput(fixtureEnv(root), [root], { scanners: ['projects'] })
         );
-        expect(
-          report.items.find((item) => item.rule === 'node-modules')?.tier
-        ).toBe('aggressive');
+        const item = report.items.find(
+          (entry) => entry.rule === 'node-modules'
+        );
+        expect(item?.tier).toBe('safe');
+        expect(item.blockers).toEqual([]);
       } finally {
         removeRoot(root);
       }
@@ -132,14 +130,13 @@ describe('project activity and markers', () => {
         })
       );
       const [item] = report.items;
-      expect(item.tier).toBe('aggressive');
       expect(item.blockers.join()).toMatch(/inside the 1h activity window/);
       removeRoot(root);
     }
   );
 
   itUnless(sandboxed)(
-    'keeps recently active projects out of the moderate tier',
+    'cleans projects used days ago in the safe tier',
     async () => {
       const root = tempRoot('dss-active-');
       const rule = PROJECT_RULES.find((r) => r.id === 'node-modules');
@@ -151,7 +148,7 @@ describe('project activity and markers', () => {
           inactive: '30d',
         })
       );
-      expect(report.items[0].tier).toBe('aggressive');
+      expect(report.items[0].tier).toBe('safe');
       expect(report.items[0].blockers).toEqual([]);
       removeRoot(root);
     }

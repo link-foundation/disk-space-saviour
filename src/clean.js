@@ -18,6 +18,7 @@ import path from 'node:path';
 import { finished } from 'node:stream/promises';
 
 import { backupDirectory, startAudit, writeAudit } from './audit.js';
+import { PhaseTimer } from './timings.js';
 import { configureContainerHost } from './docker/writable.js';
 import { DockerCli, assertAllowed, parseDockerSize } from './docker/cli.js';
 import {
@@ -44,7 +45,6 @@ import { OTHER_RULES } from './rules/other.js';
 import { compareVersions, VERSION_RULES } from './rules/versions.js';
 import { scanVersions } from './scanners/versions.js';
 import { analyzeRustProfile } from './scanners/rust.js';
-import { currentProjectTier } from './scanners/projects.js';
 import {
   filterItems,
   revalidateReport,
@@ -163,6 +163,7 @@ export class Cleaner {
     this.options = options;
     this.contexts = new Map();
     this.health = new HealthWatch(options.priorHealth);
+    this.timings = options.timings ?? new PhaseTimer();
     this.descriptors = new Map(
       (report.environments ?? []).map((env) => [env.id, env])
     );
@@ -235,7 +236,9 @@ export class Cleaner {
   }
 
   async #processScoped(ctx, item, entry) {
-    const fresh = await this.#recheck(ctx, item);
+    const fresh = await this.timings.measure('recheck', () =>
+      this.#recheck(ctx, item)
+    );
     if (fresh.reason) {
       entry.reason = fresh.reason;
       return;
@@ -248,9 +251,15 @@ export class Cleaner {
       entry.status = 'planned';
       return;
     }
-    await this.health.baseline(ctx.env, item);
-    await this.#execute(ctx, fresh.item, entry);
-    const lost = await this.health.check(ctx.env, item);
+    await this.timings.measure('health', () =>
+      this.health.baseline(ctx.env, item)
+    );
+    await this.timings.measure(`execute:${fresh.item.action?.type}`, () =>
+      this.#execute(ctx, fresh.item, entry)
+    );
+    const lost = await this.timings.measure('health', () =>
+      this.health.check(ctx.env, item)
+    );
     if (lost && !entry.reason) {
       entry.reason = lost;
     }
@@ -372,15 +381,6 @@ export class Cleaner {
   }
 
   async #staticBlocker(ctx, item) {
-    if (item.project && this.options.tier === 'safe') {
-      const tier = await currentProjectTier(
-        { ...ctx, options: this.options, now: this.options.now() },
-        item
-      );
-      if (tierRank(tier) > tierRank(this.options.tier)) {
-        return `project recently active; requires the ${tier} tier`;
-      }
-    }
     if (item.recheck?.type === 'version') {
       if (!ctx.cacheRootsConfigured) {
         await configureCacheRoots(ctx.env, await ctx.env.homeDirs());
@@ -922,8 +922,11 @@ export function cleanOptions(report, input) {
  * @returns {Promise<object>} audit log
  */
 export async function clean(report, input = {}) {
-  report = await revalidateReport(report, input);
-  const options = cleanOptions(report, input);
+  const timings = new PhaseTimer();
+  report = await timings.measure('revalidate', () =>
+    revalidateReport(report, input)
+  );
+  const options = { ...cleanOptions(report, input), timings };
   const audit = startAudit(input.command ?? 'clean', {
     dryRun: Boolean(options.dryRun),
     tier: options.tier,
@@ -935,7 +938,9 @@ export async function clean(report, input = {}) {
       audit.entries.push(entry);
     }
     if (options.audit !== false) {
-      await writeAudit(audit, { ...options, inProgress: true });
+      await timings.measure('audit-write', () =>
+        writeAudit(audit, { ...options, inProgress: true })
+      );
     }
   };
   const cleaner = new Cleaner(report, {
@@ -944,6 +949,7 @@ export async function clean(report, input = {}) {
     onProgress: persistProgress,
   });
   audit.health = cleaner.health.records;
+  audit.timings = timings;
   if (options.audit !== false) {
     await writeAudit(audit, { ...options, inProgress: true });
   }
@@ -961,7 +967,9 @@ export async function clean(report, input = {}) {
       }
       options.onEntry?.(entry, item);
       if (options.audit !== false) {
-        await writeAudit(audit, { ...options, inProgress: true });
+        await timings.measure('audit-write', () =>
+          writeAudit(audit, { ...options, inProgress: true })
+        );
       }
     }
   } catch (error) {

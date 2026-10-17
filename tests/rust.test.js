@@ -183,9 +183,14 @@ describe('Rust pruning', () => {
       expect(item.tier).toBe('safe');
       expect([...item.paths].sort()).toEqual(old.sort());
       const target = report.items.find((i) => i.rule === 'cargo-target');
-      expect(target.tier).toBe('aggressive');
+      expect(target.tier).toBe('safe');
 
-      const audit = await clean(report, { env, tier: 'safe', audit: false });
+      const audit = await clean(report, {
+        env,
+        tier: 'safe',
+        only: ['cargo-superseded'],
+        audit: false,
+      });
       expect(audit.entries.map((e) => [e.rule, e.status])).toEqual([
         ['cargo-superseded', 'removed'],
       ]);

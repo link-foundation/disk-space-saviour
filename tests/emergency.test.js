@@ -53,8 +53,8 @@ function volumeEnv(root) {
 }
 
 /**
- * Two caches (safe), an abandoned project (moderate) and a project used
- * three days ago (aggressive).
+ * Two caches and two projects with dependencies, one abandoned and one used
+ * three days ago. All four are `safe`: recency does not hold anything back.
  */
 function volume() {
   const root = tempRoot('dss-emergency-');
@@ -140,13 +140,13 @@ describe('emergency mode', () => {
   );
 
   itUnless(sandboxed)(
-    'cleans inactive lockfile-backed projects in the safe tier',
+    'cleans dependencies of recently used projects in the safe tier, largest first',
     async () => {
       const { root, run, free, kept } = volume();
       const audit = await run({ free: free() + 1024 * KIB });
       expect(audit.goalMet).toBe(true);
       expect(audit.reachedTier).toBe('safe');
-      expect(kept()).toEqual(['recent']);
+      expect(kept()).toEqual(['old']);
       expect(audit.diskAfter.free >= audit.diskBefore.free + 1024 * KIB).toBe(
         true
       );
