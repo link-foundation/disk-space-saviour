@@ -20,6 +20,7 @@ import { block, makeItem } from '../items.js';
 import { expandGlobPath, expandRulePath } from '../paths.js';
 import { scanTimeBusy, resolvePaths } from './common.js';
 import { configuredPattern } from '../env/cache-roots.js';
+import { targetedRules } from './global.js';
 
 async function installDirs(env, rule, home) {
   const dirs = [];
@@ -371,7 +372,12 @@ async function ruleItems(context, rule, home, pins) {
  * Scans version manager installs.
  * @returns {Promise<object[]>} report items
  */
-export async function scanVersions(context, { rules = VERSION_RULES } = {}) {
+export async function scanVersions(
+  context,
+  {
+    rules = targetedRules(context.options.only, VERSION_RULES) ?? VERSION_RULES,
+  } = {}
+) {
   const { env, options } = context;
   const homes = options.homes ?? (await env.homeDirs());
   const pins = await projectPins(

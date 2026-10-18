@@ -72,9 +72,9 @@ Run `dss --help` for every option. The most useful ones:
   (`--only rust`, `--only npm-cache`, `--only docker-stopped-container`), a
   single item by its JSON `id`, or the items inside a path or matching a glob
   (`--only ~/Library/Caches/Codex`, `--only '**/Crashpad/*'`). A path never
-  widens to the item holding it. When every entry names a global cache rule
-  or one of its items, only those rules are scanned, so
-  `dss clean --only openai-app-caches --yes` takes seconds.
+  widens to the item holding it. When every entry names a cache or
+  toolchain version rule or one of its items, only those rules are scanned,
+  so `dss clean --only openai-app-caches --yes` takes seconds.
 - `--exclude PATH|GLOB` prunes matching paths and descendants before reading
   them. Patterns containing separators match full paths and their ancestors;
   other patterns also match ancestor basenames.

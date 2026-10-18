@@ -21,10 +21,11 @@ import { LivenessProbe } from './liveness.js';
 import { resolveOptions } from './options.js';
 import { existingPaths, isWithin, matchesExcluded } from './paths.js';
 import { scanAgents } from './scanners/agents.js';
-import { scanGlobal, targetedRules } from './scanners/global.js';
+import { GLOBAL_RULES, scanGlobal, targetedRules } from './scanners/global.js';
 import { scanProjects } from './scanners/projects.js';
 import { scanSystem } from './scanners/system.js';
 import { scanVersions } from './scanners/versions.js';
+import { VERSION_RULES } from './rules/versions.js';
 import { readSwap } from './swap.js';
 import {
   authenticateReport,
@@ -195,11 +196,15 @@ export async function environmentContext(env, options, overrides = {}) {
  * @param {{roots?: string[]|null, errors?: object[]}} [extra]
  * @returns {Promise<object[]>} items
  */
-/** A run limited to global rules or their items skips the other scanners. */
+/** A run limited to global or version rules skips the other scanners. */
 function selectedScanners(options) {
-  return targetedRules(options.only)
-    ? options.scanners.filter((name) => name === 'global')
-    : options.scanners;
+  if (!targetedRules(options.only)) {
+    return options.scanners;
+  }
+  const rules = { global: GLOBAL_RULES, versions: VERSION_RULES };
+  return options.scanners.filter(
+    (name) => rules[name] && targetedRules(options.only, rules[name]).length > 0
+  );
 }
 
 export async function scanEnvironment(env, options, extra = {}) {

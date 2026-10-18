@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { scan, SCANNERS } from '../src/scan.js';
 import { clean } from '../src/clean.js';
 import { targetedRules } from '../src/scanners/global.js';
+import { VERSION_RULES } from '../src/rules/versions.js';
 import { itUnless, sandboxed } from './helpers/skip.js';
 import {
   age,
@@ -53,12 +54,16 @@ describe('targeted cleanup', () => {
     expect(
       targetedRules(['host:npm-cache:/home/me/.npm/_cacache']).map((r) => r.id)
     ).toEqual(['npm-cache']);
+    expect(targetedRules(['claude-code-versions'])).toEqual([]);
+    expect(
+      targetedRules(['claude-code-versions'], VERSION_RULES).map((r) => r.id)
+    ).toEqual(['claude-code-versions']);
     expect(targetedRules(['javascript'])).toBe(null);
     expect(targetedRules(['/home/me/.npm'])).toBe(null);
     expect(targetedRules([])).toBe(null);
   });
 
-  itUnless(sandboxed)('runs only the global scanner for a rule', async () => {
+  itUnless(sandboxed)('runs only the scanners of the named rules', async () => {
     const root = tempRoot();
     const originals = { ...SCANNERS };
     const ran = [];
@@ -72,6 +77,13 @@ describe('targeted cleanup', () => {
       const env = fixtureEnv(root);
       await scan(scanInput(env, [root], { only: ['openai-app-caches'] }));
       expect(ran).toEqual(['global']);
+      ran.length = 0;
+      await scan(
+        scanInput(env, [root], {
+          only: ['openai-app-caches', 'claude-code-versions'],
+        })
+      );
+      expect(ran).toEqual(['global', 'versions']);
     } finally {
       Object.assign(SCANNERS, originals);
       removeRoot(root);

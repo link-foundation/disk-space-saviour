@@ -9,7 +9,7 @@ import { scanItems } from '../env/scope.js';
 import { CACHE_RULES } from '../rules/ecosystems.js';
 import { OTHER_RULES } from '../rules/other.js';
 import { APP_RULES, expandChromiumCaches } from '../rules/apps.js';
-import { compareVersions } from '../rules/versions.js';
+import { VERSION_RULES, compareVersions } from '../rules/versions.js';
 import { block, makeItem } from '../items.js';
 import { expandGlobPaths, expandRulePath, isWithin } from '../paths.js';
 import { olderThan, scanTimeBusy, resolvePaths } from './common.js';
@@ -231,19 +231,21 @@ async function addBlockers(context, rule, item) {
   }
 }
 
+const namesRule = (entry, rule) =>
+  entry === rule.id || entry.includes(`:${rule.id}:`);
+
 /**
- * Global rules that `only` entries name directly or through an item id
- * (`env:rule:path`), or null when an entry may match anything else.
+ * Rules of `rules` that `only` entries name directly or through an item id
+ * (`env:rule:path`), when every entry names a global or version rule; null
+ * when an entry may match anything else and every rule has to run.
  */
-export function targetedRules(only = []) {
-  const named = only.map(
-    (entry) =>
-      GLOBAL_RULES.find(
-        (rule) => entry === rule.id || entry.includes(`:${rule.id}:`)
-      )?.id
-  );
-  return named.length > 0 && named.every(Boolean)
-    ? GLOBAL_RULES.filter((rule) => named.includes(rule.id))
+export function targetedRules(only = [], rules = GLOBAL_RULES) {
+  const targetable = [...GLOBAL_RULES, ...VERSION_RULES];
+  const covered =
+    only.length > 0 &&
+    only.every((entry) => targetable.some((rule) => namesRule(entry, rule)));
+  return covered
+    ? rules.filter((rule) => only.some((entry) => namesRule(entry, rule)))
     : null;
 }
 
