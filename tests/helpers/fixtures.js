@@ -131,9 +131,16 @@ export function projectFixture(root, rule, bytes = 64 * 1024) {
 }
 
 /**
+ * Host tools whose answers describe the test machine, not the fixture, and
+ * take seconds to run (`brew cleanup --dry-run`, `top -l 1`).
+ */
+const HOST_TOOLS = new Set(['brew', 'journalctl', 'snap', 'sysctl', 'top']);
+
+/**
  * Local environment confined to fixture directories: only processes
  * working inside `root` and only open paths inside it are visible, so
  * whatever else runs on the test machine cannot make fixtures busy.
+ * Host tools look absent.
  */
 class FixtureEnv extends LocalEnv {
   constructor(root) {
@@ -153,12 +160,20 @@ class FixtureEnv extends LocalEnv {
     };
     this.executor.run = (argv, options) => {
       guard(argv);
-      return run(argv, options);
+      return HOST_TOOLS.has(argv[0])
+        ? Promise.resolve({ code: 127, stdout: '', stderr: 'not in fixtures' })
+        : run(argv, options);
     };
     this.executor.spawn = (argv) => {
       guard(argv);
       throw new Error('fixture spawn must be explicitly mocked');
     };
+  }
+
+  which(command) {
+    return HOST_TOOLS.has(command)
+      ? Promise.resolve(false)
+      : super.which(command);
   }
 
   readText(target, ...args) {

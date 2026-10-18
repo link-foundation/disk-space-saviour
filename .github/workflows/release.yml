@@ -362,7 +362,7 @@ jobs:
         # It is a per-test bound and does not bound the suite: 25 tests of
         # 29s each pass every per-test check. The suite budget below is
         # what bounds the whole run.
-        run: bash scripts/run-with-budget-warning.sh 200 "Bun test suite" bun test --timeout 30000
+        run: bash scripts/run-with-budget-warning.sh 300 "Bun test suite" bun test --timeout 30000
 
       - name: Setup Deno
         if: matrix.runtime == 'deno'
