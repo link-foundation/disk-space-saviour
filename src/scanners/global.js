@@ -232,10 +232,29 @@ async function addBlockers(context, rule, item) {
 }
 
 /**
+ * Global rules that `only` entries name directly or through an item id
+ * (`env:rule:path`), or null when an entry may match anything else.
+ */
+export function targetedRules(only = []) {
+  const named = only.map(
+    (entry) =>
+      GLOBAL_RULES.find(
+        (rule) => entry === rule.id || entry.includes(`:${rule.id}:`)
+      )?.id
+  );
+  return named.length > 0 && named.every(Boolean)
+    ? GLOBAL_RULES.filter((rule) => named.includes(rule.id))
+    : null;
+}
+
+/**
  * Scans global cache and leftover locations.
  * @returns {Promise<object[]>} report items
  */
-export async function scanGlobal(context, { rules = GLOBAL_RULES } = {}) {
+export async function scanGlobal(
+  context,
+  { rules = targetedRules(context.options.only) ?? GLOBAL_RULES } = {}
+) {
   const { env, options } = context;
   const homes = options.homes ?? (await env.homeDirs());
   const tmpDirs = options.tmpDirs ?? (await env.tmpDirs());

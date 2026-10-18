@@ -7,6 +7,7 @@ import {
   configureContainerHost,
   resetWritableLayers,
 } from './docker/writable.js';
+import path from 'node:path';
 import { setInterval, clearInterval } from 'node:timers';
 import { scanDocker } from './docker/scan.js';
 import { LocalEnv } from './env/local.js';
@@ -20,7 +21,7 @@ import { LivenessProbe } from './liveness.js';
 import { resolveOptions } from './options.js';
 import { existingPaths, isWithin, matchesExcluded } from './paths.js';
 import { scanAgents } from './scanners/agents.js';
-import { scanGlobal } from './scanners/global.js';
+import { scanGlobal, targetedRules } from './scanners/global.js';
 import { scanProjects } from './scanners/projects.js';
 import { scanSystem } from './scanners/system.js';
 import { scanVersions } from './scanners/versions.js';
@@ -194,6 +195,13 @@ export async function environmentContext(env, options, overrides = {}) {
  * @param {{roots?: string[]|null, errors?: object[]}} [extra]
  * @returns {Promise<object[]>} items
  */
+/** A run limited to global rules or their items skips the other scanners. */
+function selectedScanners(options) {
+  return targetedRules(options.only)
+    ? options.scanners.filter((name) => name === 'global')
+    : options.scanners;
+}
+
 export async function scanEnvironment(env, options, extra = {}) {
   const controller = new AbortController();
   const abort = () => controller.abort(options.signal.reason);
@@ -321,7 +329,7 @@ async function scanEnvironmentScoped(
   };
   context.ready = ready;
   let incomplete = false;
-  for (const name of options.scanners) {
+  for (const name of selectedScanners(options)) {
     checkSignal(env.signal);
     context.scanner = name;
     stage(name);
@@ -434,12 +442,33 @@ export async function selfContainerIds(env) {
   return [...ids];
 }
 
-function matchesOnly(item, only) {
+/**
+ * `only` entries name an ecosystem, rule, kind or item id, or a path or
+ * glob: an item matches it when each of its paths lies inside the path, or
+ * the path or one of its ancestors matches the glob.
+ */
+function matchesOnly(item, only, pathApi = path) {
   return (
     only.length === 0 ||
     only.some(
       (entry) =>
-        entry === item.ecosystem || entry === item.rule || entry === item.kind
+        [item.ecosystem, item.rule, item.kind, item.id].includes(entry) ||
+        insideOnlyPath(item, entry, pathApi)
+    )
+  );
+}
+
+function insideOnlyPath(item, entry, pathApi) {
+  const glob = /[*?[]/.test(entry);
+  if (!glob && !pathApi.isAbsolute(entry) && !path.win32.isAbsolute(entry)) {
+    return false;
+  }
+  return (
+    item.paths?.length > 0 &&
+    item.paths.every((target) =>
+      glob
+        ? matchesExcluded(target, [entry], pathApi)
+        : isWithin(target, entry, pathApi)
     )
   );
 }
@@ -476,7 +505,7 @@ export function filterItems(items, options, daemons = [], pathApi) {
         item.sizeUnknown ||
         item.imageBytes >= options.minSizeBytes ||
         item.container?.pinnedImage?.bytes >= options.minSizeBytes) &&
-      matchesOnly(item, options.only) &&
+      matchesOnly(item, options.only, pathApi) &&
       !excluded(item, options.exclude, pathApi) &&
       !underDaemonRoot(item, daemons, pathApi)
   );

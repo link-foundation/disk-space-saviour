@@ -112,25 +112,21 @@ describe('application download rules', () => {
     });
   }
 
-  it('keeps the newest Chrome on-device model', async () => {
+  it('offers every Chrome on-device model version', async () => {
     const root = tempRoot();
-    const models = join(
-      root,
-      'home',
-      support,
-      'Google/Chrome/OptGuideOnDeviceModel'
-    );
+    const chrome = join(root, 'home', support, 'Google/Chrome');
+    const models = [
+      join(chrome, 'OptGuideOnDeviceModel', '2025.8.8.1141'),
+      join(chrome, 'OptGuideOnDeviceClassifierModel', '2026.2.12.1554'),
+    ];
     try {
-      writeBlob(join(models, '2025.8.8.1141', 'weights.bin'), 8192);
-      const { report } = await scanFixture(
-        root,
-        '2025.10.1.1/weights.bin',
-        models
-      );
+      writeBlob(join(models[0], 'weights.bin'), 8192);
+      const { report } = await scanFixture(root, 'model.tflite', models[1]);
       const items = report.items.filter(
         (i) => i.rule === 'chrome-on-device-models'
       );
-      expect(items.map((i) => i.path)).toEqual([join(models, '2025.8.8.1141')]);
+      expect(items.map((i) => i.path).sort()).toEqual(models.sort());
+      expect(items.every((i) => i.blockers.length === 0)).toBe(true);
     } finally {
       removeRoot(root);
     }

@@ -68,8 +68,13 @@ dss docker scan|clean [--container ID] [--recursive]
 
 Run `dss --help` for every option. The most useful ones:
 
-- `--only NAME` limits a run to an ecosystem, rule or kind (`--only rust`,
-  `--only npm-cache`, `--only docker-stopped-container`).
+- `--only NAME|ID|PATH` limits a run to an ecosystem, rule or kind
+  (`--only rust`, `--only npm-cache`, `--only docker-stopped-container`), a
+  single item by its JSON `id`, or the items inside a path or matching a glob
+  (`--only ~/Library/Caches/Codex`, `--only '**/Crashpad/*'`). A path never
+  widens to the item holding it. When every entry names a global cache rule
+  or one of its items, only those rules are scanned, so
+  `dss clean --only openai-app-caches --yes` takes seconds.
 - `--exclude PATH|GLOB` prunes matching paths and descendants before reading
   them. Patterns containing separators match full paths and their ancestors;
   other patterns also match ancestor basenames.
@@ -110,8 +115,8 @@ LibreWolf, Waterfox, Zen and Floorp, IDE caches (JetBrains, VS Code, Cursor,
 Windsurf, Qoder), AI agent caches and logs, the Discord cache, macOS app
 updates staged by Sparkle and Squirrel, package manager archives, trash, crash
 reports, core dumps and journald logs. Application downloads are covered too:
-Chrome bundle clones left by exited browsers, superseded Chrome on-device
-models, Google Updater installers, ChatGPT Atlas and Codex app caches,
+Chrome bundle clones left by exited browsers, Chromium on-device AI models
+(downloaded again when a page uses built-in AI), Google Updater installers, ChatGPT Atlas and Codex app caches,
 Electron and electron-builder archives, the Bun transpiler cache, Docker
 Desktop and Warp staged updates (kept while the app runs), Zed language
 servers, tree-sitter toolchains, Codex plugin staging, the Clang module cache

@@ -31,13 +31,23 @@ export const DOWNLOAD_RULES = [
   {
     id: 'chrome-on-device-models',
     ecosystem: 'browsers',
-    description: 'superseded Chrome on-device AI model versions',
+    description:
+      'Chromium on-device AI models, downloaded again when a page uses built-in AI',
+    // Every installed version matches: the component updater fetches the
+    // model again on demand. A loaded model is held open and a download in
+    // progress writes to its directory, which the open-file check and the
+    // activity window catch.
     paths: [
-      '~/Library/Application Support/Google/Chrome/OptGuideOnDeviceModel/*',
-      '~/.config/google-chrome/OptGuideOnDeviceModel/*',
-      '{LOCALAPPDATA}/Google/Chrome/User Data/OptGuideOnDeviceModel/*',
-    ],
-    versionPattern: /^(?<version>\d+(?:\.\d+){1,3})$/,
+      '~/Library/Application Support/Google/Chrome*',
+      '~/Library/Application Support/Chromium',
+      '~/Library/Application Support/Microsoft Edge*',
+      '~/.config/google-chrome*',
+      '~/.config/chromium',
+      '{LOCALAPPDATA}/Google/Chrome*/User Data',
+      '{LOCALAPPDATA}/Chromium/User Data',
+      '{LOCALAPPDATA}/Microsoft/Edge*/User Data',
+    ].map((root) => `${root}/OptGuideOnDevice*Model/*`),
+    directoryOnly: true,
     minAge: 'stale',
     busy: [],
   },

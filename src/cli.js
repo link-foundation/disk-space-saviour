@@ -40,7 +40,8 @@ Scope:
   --container ID|NAME        limit Docker work to these containers (repeat)
   --max-depth N              directory depth for project search (default 6)
   --scan-budget AGE          time budget per filesystem environment (2m)
-  --only NAME                only these ecosystems, rules or kinds (repeat)
+  --only NAME|ID|PATH        only these ecosystems, rules, kinds, item ids,
+                             or items inside a path or glob (repeat)
   --exclude PATH|GLOB        never touch matching paths (repeat)
   --scanner NAME             projects, global, versions, agents, system
   --min-size SIZE            ignore smaller items (default 1M)
