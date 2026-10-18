@@ -115,7 +115,9 @@ LibreWolf, Waterfox, Zen and Floorp, IDE caches (JetBrains, VS Code, Cursor,
 Windsurf, Qoder), AI agent caches and logs, the Discord cache, macOS app
 updates staged by Sparkle and Squirrel, package manager archives, trash, crash
 reports, core dumps and journald logs. Application downloads are covered too:
-Chrome bundle clones left by exited browsers, Chromium on-device AI models
+Chrome bundle clones left by exited browsers (kept while any browser runs the
+clone's hard-linked executable, and counted as free when they still share
+their blocks with the installed app), Chromium on-device AI models
 (downloaded again when a page uses built-in AI), Google Updater installers, ChatGPT Atlas and Codex app caches,
 Electron and electron-builder archives, the Bun transpiler cache, Docker
 Desktop and Warp staged updates (kept while the app runs), Zed language

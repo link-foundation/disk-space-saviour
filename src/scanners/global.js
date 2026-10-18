@@ -17,6 +17,7 @@ import { configuredPattern } from '../env/cache-roots.js';
 import { TOOLCHAIN_CACHE_RULES } from '../rules/toolchains.js';
 import { DOWNLOAD_RULES } from '../rules/downloads.js';
 import { timed } from '../timings.js';
+import { appCloneDetails } from './app-clones.js';
 
 export const GLOBAL_RULES = [
   ...CACHE_RULES,
@@ -173,7 +174,7 @@ function olderVersions(env, rule, paths, stats) {
   return paths.filter((target) => old.has(target));
 }
 
-async function buildItem(context, rule, base, group) {
+async function buildItem(context, rule, base, group, homes) {
   const { env } = context;
   const paths = group.map((entry) => entry.path);
   const appRoot = rule.markers
@@ -207,8 +208,29 @@ async function buildItem(context, rule, base, group) {
     },
   });
   block(item, blocker);
+  if (rule.appClone) {
+    await describeAppClone(context, rule, item, homes);
+  }
   await addBlockers(context, rule, item);
   return item;
+}
+
+async function describeAppClone(context, rule, item, homes) {
+  const { env } = context;
+  const appDirs = rule.appClone.installed
+    .flatMap((dir) =>
+      homes.map((home) => expandRulePath(dir, { home, pathApi: env.path }))
+    )
+    .filter(Boolean);
+  const { executables, sharedWith } = await appCloneDetails(env, item.path, [
+    ...new Set(appDirs),
+  ]);
+  item.checks.executables = executables;
+  if (sharedWith) {
+    // Every block is shared with the installed app: nothing to reclaim.
+    item.bytes = 0;
+    item.reason = `shares its disk blocks with ${sharedWith}`;
+  }
 }
 
 async function addBlockers(context, rule, item) {
@@ -338,7 +360,7 @@ export async function scanGlobal(
       : measured.filter(large).map((entry) => [entry]);
     for (const group of groups.filter((g) => g.length > 0)) {
       const item = await timed(context.timings, 'global:item', () =>
-        buildItem(context, rule, base, group)
+        buildItem(context, rule, base, group, homes)
       );
       items.push(item);
       if ((await context.ready?.([item])) === false) {

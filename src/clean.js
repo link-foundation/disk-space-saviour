@@ -432,6 +432,7 @@ export class Cleaner {
   async #safetyBlocker(ctx, item, type) {
     await ctx.liveness.refresh(true);
     await ctx.liveness.resolve(item.paths);
+    await ctx.liveness.resolveExecutables(item.checks?.executables);
     const busy = ctx.liveness.busyReason(item);
     if (busy) {
       return `busy: ${busy}`;
@@ -667,6 +668,7 @@ export class Cleaner {
       return `stopped before ${target}: ${stopped}`;
     }
     await ctx.liveness.resolve([target]);
+    await ctx.liveness.resolveExecutables(item.checks?.executables);
     const busy = ctx.liveness.busyReason({ ...item, paths: [target] });
     return busy ? `stopped before ${target}: busy: ${busy}` : null;
   }

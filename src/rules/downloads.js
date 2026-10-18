@@ -20,10 +20,12 @@ export const DOWNLOAD_RULES = [
     description:
       'Chromium app bundle clones left by exited browsers (an update makes them full copies)',
     // Chrome clones its bundle into the per-user `X` directory next to
-    // `$TMPDIR` at launch and removes the clone when it exits. A running
-    // browser maps the executables of its clone, so the open-file check
-    // keeps every clone in use: a browser name would block orphans forever.
+    // `$TMPDIR` at launch and removes the clone when it exits. A clone
+    // stays while any process runs its hard-linked main executable (see
+    // ../scanners/app-clones.js): a browser name would block orphans
+    // forever, and open files miss a browser started before the update.
     paths: ['{TMP}/../X/*.code_sign_clone/code_sign_clone.*'],
+    appClone: { installed: ['/Applications', '~/Applications'] },
     directoryOnly: true,
     minAge: 'stale',
     busy: [],

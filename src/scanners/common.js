@@ -27,6 +27,7 @@ export async function listMany(env, dirs) {
  */
 export async function scanTimeBusy(context, item) {
   await resolvePaths(context, item.paths);
+  await context.liveness?.resolveExecutables(item.checks?.executables);
   return context.liveness ? context.liveness.busyReason(item) : null;
 }
 

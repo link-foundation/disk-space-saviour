@@ -212,6 +212,7 @@ export class LivenessProbe {
     this.realPaths = new Map();
     this.pathOwners = new Map();
     this.pathStats = new Map();
+    this.inodes = new Map();
   }
 
   async refresh(force = false) {
@@ -230,6 +231,50 @@ export class LivenessProbe {
     this.realPaths.clear();
     this.pathStats.clear();
     this.pathOwners.clear();
+    this.inodes.clear();
+  }
+
+  /**
+   * Inodes of `executables` and of the open files that share their names,
+   * because a process running a hard link of an executable reports
+   * whichever path it was started from.
+   * @param {string[]} [executables]
+   */
+  async resolveExecutables(executables = []) {
+    if (executables.length === 0) {
+      return;
+    }
+    const names = new Set(
+      executables.map((target) => this.env.path.basename(target))
+    );
+    const missing = [
+      ...executables,
+      ...[...(this.openPaths ?? [])].filter((open) =>
+        names.has(this.env.path.basename(open))
+      ),
+    ].filter((target) => !this.inodes.has(target));
+    const stats = await Promise.all(
+      missing.map((target) => this.env.stat(target))
+    );
+    missing.forEach((target, index) =>
+      this.inodes.set(target, stats[index]?.inode ?? null)
+    );
+  }
+
+  /** A process running one of `executables` under any of its links. */
+  executableUsage(executables = []) {
+    for (const target of executables) {
+      const inode = this.inodes.get(target);
+      if (!inode) {
+        continue;
+      }
+      for (const open of this.openPaths ?? []) {
+        if (open !== target && this.inodes.get(open) === inode) {
+          return `in use: ${open} is ${target}`;
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -511,6 +556,7 @@ export class LivenessProbe {
       (checks.mtime === false ? null : this.recentWrite(item.newestMtimeMs)) ??
       this.runningTool(checks.busy, checks.cwd, item) ??
       this.processUsage(paths) ??
+      this.executableUsage(checks.executables) ??
       this.uncertainUsage(item.paths ?? [])
     );
   }
