@@ -351,6 +351,23 @@ function timingLines(report, { verbose }) {
     });
 }
 
+function holderLine(holder) {
+  const details = [`${formatBytes(holder.memoryBytes)} memory`];
+  if (holder.compressedBytes !== undefined) {
+    details.push(`${formatBytes(holder.compressedBytes)} compressed`);
+  }
+  if (holder.swappedBytes !== undefined) {
+    details.push(`${formatBytes(holder.swappedBytes)} swapped`);
+  }
+  const change = holder.growth?.memoryBytes;
+  if (change) {
+    details.push(
+      `${change > 0 ? '+' : '-'}${formatBytes(Math.abs(change))} since ${new Date(holder.growth.since).toISOString()}`
+    );
+  }
+  return `${holder.pid} ${holder.command}: ${details.join(', ')}`;
+}
+
 /**
  * Renders a scan report.
  * @param {object} report
@@ -368,11 +385,12 @@ export function formatReport(report, options = {}) {
     lines.push(
       `Swap: ${formatBytes(host.swap.used)} used of ${formatBytes(host.swap.total)} (managed by macOS)`
     );
+    for (const warning of host.swap.warnings ?? []) {
+      lines.push(`WARNING: ${warning}`);
+    }
     lines.push(host.swap.attribution);
     for (const holder of host.swap.holders) {
-      lines.push(
-        `  ${holder.pid} ${holder.command}: ${formatBytes(holder.memoryBytes)} memory, ${formatBytes(holder.compressedBytes)} compressed`
-      );
+      lines.push(`  ${holderLine(holder)}`);
     }
     lines.push(host.swap.advice);
   }

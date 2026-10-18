@@ -243,10 +243,27 @@ and sizes. Safe cleanup also rechecks source activity. Explicit moderate cleanup
 preserves the ability to remove ignored dependencies when only source changed.
 Library callers opt into state with `cacheDir`.
 
-On macOS, reports include `sysctl vm.swapusage` and the largest resident/compressed
-memory consumers from `top`. These are memory diagnostics, not verified per-process
-swap ownership. When Docker Desktop consumes memory, saving work and restarting it
-or lowering its VM memory limit can help. dss never deletes swap files.
+On macOS, reports include `sysctl vm.swapusage` and the largest memory consumers
+from `top` (memory includes compressed and swapped pages). These are memory
+diagnostics, not verified per-process swap ownership. On Linux, reports include
+`/proc/meminfo` swap and the processes with the most swapped memory (`VmSwap`).
+Each scan records swap usage and its largest holders in the state directory, so
+the next scan shows how much both grew during the last week. A `WARNING:` line
+appears when swap grew by 1 GiB or more, is at least 75% full, or exceeds the free
+disk space it can grow into, naming the processes holding the memory and their
+growth. Long-running AI agent sessions keep their history in memory: quitting and
+resuming them (`codex resume <session-id>`, `claude --resume`) releases it. When
+Docker Desktop consumes memory, saving work and restarting it or lowering its VM
+memory limit can help. dss never deletes swap files.
+
+Git clones in temporary directories (`{TMP}/*` and `{TMP}/*/*`) are safe to remove
+once untouched for the activity window when every worktree sharing the repository
+is clean, none lives outside the clone, nothing is stashed, and every commit
+reachable from `HEAD`, a branch or a worktree is advertised by an https or ssh
+remote. That last check runs `git ls-remote` against the remote rather than
+trusting remote-tracking refs, outside any repository, with only the https and
+ssh transports and no prompts. Clones of local paths and clones whose `.git` is a
+symlink are left alone, and cleanup repeats every check right before deleting.
 
 Cache discovery honors tool configuration before default paths, including
 `GOMODCACHE`, `GOPATH`, `GOCACHE`, `CARGO_HOME`, `RUSTUP_HOME`,

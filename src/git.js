@@ -16,6 +16,12 @@ import path from 'node:path';
 
 import { trace } from './exec.js';
 import { preservedWork } from './git-preserved.js';
+import {
+  advertisedCommits,
+  attachedWorktrees,
+  lsRemote,
+  networkRemotes,
+} from './git-remote.js';
 
 const GIT_FLAGS = [
   '--no-optional-locks',
@@ -42,7 +48,7 @@ const SAFE_GIT_ENV = {
  * a linked worktree or a submodule has a `.git` file naming its directory,
  * and a linked worktree names the common directory in `commondir`.
  */
-async function gitDirectories(root) {
+export async function gitDirectories(root) {
   const dotGit = path.join(root, '.git');
   const stat = await fsp.lstat(dotGit);
   let gitDir = dotGit;
@@ -176,10 +182,11 @@ export class GitInspector {
     this.options = options;
     this.states = new Map();
     this.roots = new Map();
+    this.remoteRefs = new Map();
     this.available = null;
   }
 
-  async #git(root, args, safeDir = null) {
+  async #git(root, args, safeDir = null, input = undefined) {
     const result = await this.env.run(
       [
         'git',
@@ -189,7 +196,7 @@ export class GitInspector {
         ...(safeDir ? ['--git-dir', safeDir, '--work-tree', root] : []),
         ...args,
       ],
-      { env: SAFE_GIT_ENV }
+      { env: SAFE_GIT_ENV, input }
     );
     trace('git', root, args.join(' '), '->', result.code);
     return result;
@@ -246,6 +253,7 @@ export class GitInspector {
   invalidate() {
     this.states.clear();
     this.roots.clear();
+    this.remoteRefs.clear();
   }
 
   async #loadState(root) {
@@ -322,8 +330,8 @@ export class GitInspector {
     return stateBlockers(root, await this.repoState(root));
   }
 
-  /** Protect an entire temporary work directory, including nested clones. */
-  async treeBlockers(target, { allowNoRepo = false } = {}) {
+  /** Repositories at or below `target`. */
+  async #repoRoots(target) {
     const dirs = await this.env.findDirs([target], {
       globs: ['.git'],
       maxDepth: 32,
@@ -334,13 +342,18 @@ export class GitInspector {
       maxDepth: 32,
       skipNames: [],
     });
-    const roots = new Set([
+    return new Set([
       ...((await this.env.exists(this.env.path.join(target, '.git')))
         ? [target]
         : []),
       ...dirs.map((entry) => entry.parent),
       ...files.map((file) => this.env.path.dirname(file)),
     ]);
+  }
+
+  /** Protect an entire temporary work directory, including nested clones. */
+  async treeBlockers(target, { allowNoRepo = false } = {}) {
+    const roots = await this.#repoRoots(target);
     if (roots.size === 0) {
       if (allowNoRepo) {
         return [];
@@ -355,6 +368,134 @@ export class GitInspector {
       blockers.push(...(await this.repoBlockers(root)));
     }
     return blockers;
+  }
+
+  /**
+   * Reasons a temporary clone must not be deleted. Every repository inside
+   * `target` must have no uncommitted, unpushed or stashed work in any of
+   * its worktrees, no linked worktree outside `target`, and every local
+   * commit must be advertised by one of its https or ssh remotes.
+   */
+  async cloneBlockers(target) {
+    if (this.env.kind !== 'host') {
+      return [`${target}: remote copies are only verified on the host`];
+    }
+    if (!(await this.isAvailable())) {
+      return [`${target}: git is not installed, cannot verify the repository`];
+    }
+    const roots = await this.#repoRoots(target);
+    if (roots.size === 0) {
+      return [`${target}: no Git repository found; cannot verify work`];
+    }
+    if (roots.size > 50) {
+      return [`${target}: too many repositories to verify safely`];
+    }
+    const blockers = [];
+    for (const root of roots) {
+      blockers.push(...(await this.#cloneRootBlockers(root, target)));
+    }
+    return blockers;
+  }
+
+  async #cloneRootBlockers(root, target) {
+    let commonDir;
+    try {
+      ({ commonDir } = await gitDirectories(root));
+    } catch (error) {
+      return [`${root}: ${error.message}`];
+    }
+    const inside = (dir) => {
+      const relative = path.relative(target, dir);
+      return (
+        relative === '' ||
+        (!relative.startsWith('..') && !path.isAbsolute(relative))
+      );
+    };
+    const { trees, detached } = await attachedWorktrees(commonDir);
+    // Deleting the repository strands every worktree that shares it.
+    const affected = inside(commonDir) ? [root, ...trees] : [root];
+    const blockers = [];
+    for (const tree of new Set(affected)) {
+      if (!inside(tree)) {
+        blockers.push(`linked worktree ${tree} uses the repository in ${root}`);
+      } else if (await this.env.exists(path.join(tree, '.git'))) {
+        blockers.push(...(await this.repoBlockers(tree)));
+      }
+    }
+    if (blockers.length > 0) {
+      return blockers;
+    }
+    return this.#remoteBlockers(root, commonDir, detached);
+  }
+
+  async #remoteBlockers(root, commonDir, detached) {
+    const remotes = await networkRemotes(commonDir);
+    if (remotes.length === 0) {
+      return [`Git repository ${root} has no https or ssh remote holding it`];
+    }
+    const advertised = [];
+    const unreachable = [];
+    for (const remote of remotes) {
+      if (!this.remoteRefs.has(remote.url)) {
+        this.remoteRefs.set(
+          remote.url,
+          lsRemote((argv, options) => this.env.run(argv, options), remote.url)
+        );
+      }
+      const result = await this.remoteRefs.get(remote.url);
+      if (result.code === 0) {
+        advertised.push(...advertisedCommits(result.stdout));
+      } else {
+        unreachable.push(`${remote.name} (${remote.host})`);
+      }
+    }
+    if (advertised.length === 0) {
+      return [
+        `cannot confirm Git repository ${root} on a remote: ${unreachable.length > 0 ? `${unreachable.join(', ')} unreachable` : 'its remotes advertise nothing'}`,
+      ];
+    }
+    try {
+      const missing = await safeGitDirectory(root, (safeDir) =>
+        this.#commitsMissingFrom(root, safeDir, advertised, detached)
+      );
+      if (missing === 0) {
+        return [];
+      }
+      const hosts = [...new Set(remotes.map((remote) => remote.host))];
+      return [
+        `Git repository ${root} has ${plural(missing, 'commit')} no branch, tag or pull request on ${hosts.join(', ')} contains`,
+      ];
+    } catch (error) {
+      return [`cannot compare ${root} with its remote: ${error.message}`];
+    }
+  }
+
+  /** Local commits reachable from HEAD, branches or `detached` but no advertised commit. */
+  async #commitsMissingFrom(root, safeDir, advertised, detached) {
+    const known = await this.#git(
+      root,
+      ['cat-file', '--batch-check=%(objectname) %(objecttype)'],
+      safeDir,
+      `${advertised.join('\n')}\n`
+    );
+    if (known.code !== 0) {
+      throw new Error(known.stderr.trim() || `exit ${known.code}`);
+    }
+    const commits = known.stdout
+      .split('\n')
+      .map((line) => /^([0-9a-f]+) commit$/.exec(line)?.[1])
+      .filter(Boolean);
+    const tips = ['HEAD', '--branches', ...detached];
+    const count = await this.#git(
+      root,
+      ['rev-list', '--count', '--stdin', ...tips],
+      safeDir,
+      commits.map((commit) => `^${commit}\n`).join('')
+    );
+    if (count.code !== 0) {
+      throw new Error(count.stderr.trim() || `exit ${count.code}`);
+    }
+    return Number(count.stdout.trim());
   }
 
   /**

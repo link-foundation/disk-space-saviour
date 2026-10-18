@@ -12,7 +12,10 @@
  * otherwise each match is its own item. `minAge: 'stale'` only reports
  * matches untouched for the stale-age window, `minAge: 'inactive'` for the
  * project inactivity window. `git: true` refuses matches that are Git work
- * trees with uncommitted, unpushed, or stashed changes.
+ * trees with uncommitted, unpushed, or stashed changes. `git: 'clone'`
+ * matches only Git work trees with an https or ssh remote, and refuses them
+ * unless every worktree is clean and the remote still advertises every
+ * local commit.
  */
 
 export const OTHER_RULES = [
@@ -531,5 +534,35 @@ export const OTHER_RULES = [
     ],
     minAge: 'stale',
     busy: ['node'],
+  },
+];
+
+/**
+ * Checkouts cloned into temporary directories by tools, tests and agents,
+ * checked after every named rule so a more specific rule claims its own
+ * paths first.
+ */
+export const TEMP_CLONE_RULES = [
+  {
+    id: 'temp-git-clones',
+    ecosystem: 'tmp',
+    scope: 'tmp',
+    description:
+      'Git clones in temporary directories whose commits all exist on a remote',
+    tier: 'safe',
+    paths: ['{TMP}/*', '{TMP}/*/*'],
+    directoryOnly: true,
+    minAge: 'stale',
+    git: 'clone',
+    busy: [
+      'git',
+      'claude',
+      'codex',
+      'opencode',
+      'agent',
+      'node',
+      'bun',
+      'cargo',
+    ],
   },
 ];

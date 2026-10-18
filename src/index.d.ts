@@ -172,9 +172,19 @@ export interface EnvironmentDescriptor {
     holders: Array<{
       pid: number;
       command: string;
+      /** Resident plus compressed and swapped memory. */
       memoryBytes: number;
-      compressedBytes: number;
+      /** macOS only. */
+      compressedBytes?: number;
+      /** Linux only (`VmSwap`). */
+      swappedBytes?: number;
+      /** Change since the earliest scan of the last week listing this process. */
+      growth?: { since: number; memoryBytes: number };
     }>;
+    /** Change since the earliest scan of the last week. */
+    growth?: { since: number; usedBytes: number } | null;
+    /** Large, growing, or disk-threatening swap, naming the memory holders. */
+    warnings?: string[];
     attribution: string;
     advice: string;
   } | null;

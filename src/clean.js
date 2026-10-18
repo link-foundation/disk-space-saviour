@@ -476,6 +476,11 @@ export class Cleaner {
   }
 
   async #gitBlocker(ctx, item) {
+    if (item.recheck?.type === 'clone') {
+      ctx.git.invalidate();
+      const blockers = await ctx.git.cloneBlockers(item.path);
+      return blockers.length > 0 ? blockers.join('; ') : null;
+    }
     if (
       item.project ||
       item.rule === 'gh-issue-solver-workdirs' ||

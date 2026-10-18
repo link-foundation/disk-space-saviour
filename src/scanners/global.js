@@ -7,7 +7,7 @@ import { scanItems } from '../env/scope.js';
  */
 
 import { CACHE_RULES } from '../rules/ecosystems.js';
-import { OTHER_RULES } from '../rules/other.js';
+import { OTHER_RULES, TEMP_CLONE_RULES } from '../rules/other.js';
 import { APP_RULES, expandChromiumCaches } from '../rules/apps.js';
 import { VERSION_RULES, compareVersions } from '../rules/versions.js';
 import { block, makeItem } from '../items.js';
@@ -18,6 +18,8 @@ import { TOOLCHAIN_CACHE_RULES } from '../rules/toolchains.js';
 import { DOWNLOAD_RULES } from '../rules/downloads.js';
 import { timed } from '../timings.js';
 import { appCloneDetails } from './app-clones.js';
+import { gitDirectories } from '../git.js';
+import { networkRemotes } from '../git-remote.js';
 
 export const GLOBAL_RULES = [
   ...CACHE_RULES,
@@ -25,6 +27,7 @@ export const GLOBAL_RULES = [
   ...APP_RULES,
   ...TOOLCHAIN_CACHE_RULES,
   ...DOWNLOAD_RULES,
+  ...TEMP_CLONE_RULES,
 ];
 
 function scopeBases(rule, homes, tmpDirs) {
@@ -174,6 +177,12 @@ function olderVersions(env, rule, paths, stats) {
   return paths.filter((target) => old.has(target));
 }
 
+/** What cleanup re-verifies right before deleting, by the rule's `git` mode. */
+const GIT_RECHECKS = {
+  ifPresent: { type: 'scratch' },
+  clone: { type: 'clone' },
+};
+
 async function buildItem(context, rule, base, group, homes) {
   const { env } = context;
   const paths = group.map((entry) => entry.path);
@@ -196,7 +205,7 @@ async function buildItem(context, rule, base, group, homes) {
     reason: rule.minAge
       ? `untouched for longer than the ${rule.minAge === 'stale' ? 'activity' : 'inactivity'} window`
       : 're-downloaded or re-created on demand',
-    recheck: rule.git === 'ifPresent' ? { type: 'scratch' } : undefined,
+    recheck: GIT_RECHECKS[rule.git],
     action: action ?? { type: 'none' },
     checks: {
       busy: [
@@ -240,9 +249,11 @@ async function addBlockers(context, rule, item) {
   }
   if (rule.git) {
     for (const target of item.paths) {
-      for (const reason of await git.treeBlockers(target, {
-        allowNoRepo: rule.git === 'ifPresent',
-      })) {
+      for (const reason of rule.git === 'clone'
+        ? await git.cloneBlockers(target)
+        : await git.treeBlockers(target, {
+            allowNoRepo: rule.git === 'ifPresent',
+          })) {
         block(item, reason);
       }
     }
@@ -316,7 +327,7 @@ export async function scanGlobal(
     for (const target of candidates) {
       if (
         !(await timed(context.timings, 'global:accept', () =>
-          acceptedPath(env, rule, target, stats)
+          acceptedPath(env, rule, target, stats, seen)
         ))
       ) {
         continue;
@@ -371,12 +382,35 @@ export async function scanGlobal(
   return items;
 }
 
-async function acceptedPath(env, rule, target, stats) {
+/**
+ * A temporary directory holding a Git work tree with a network remote,
+ * outside every path another rule (or a parent clone) already claimed.
+ */
+async function tempClone(env, target, seen) {
+  if (
+    env.kind !== 'host' ||
+    [...seen].some((claimed) => isWithin(target, claimed, env.path))
+  ) {
+    return false;
+  }
+  try {
+    // Other users' temporary directories are unreadable; that is no error.
+    const { commonDir } = await gitDirectories(target);
+    return (await networkRemotes(commonDir)).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function acceptedPath(env, rule, target, stats, seen = new Set()) {
   const name = env.path.basename(target);
   if (rule.excludeNames?.includes(name)) {
     return false;
   }
   if (rule.directoryOnly && stats.get(target)?.type !== 'dir') {
+    return false;
+  }
+  if (rule.git === 'clone' && !(await tempClone(env, target, seen))) {
     return false;
   }
   if (rule.fileOnly && stats.get(target)?.type !== 'file') {
