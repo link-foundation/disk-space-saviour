@@ -150,7 +150,10 @@ is needed. Agent scratch cleanup requires inactivity and Git safety checks.
   version holding globally installed npm packages or pyenv virtual
   environments is blocked; bundled `npm`/`corepack` and use-m caches
   (`<name>-v-<version>`) are reinstalled on demand and do not count.
-  Container paths are checked individually before each bounded deletion batch.
+  A Claude Code version stays while a running session uses it: its
+  executable is open, or its `~/.local/state/claude/locks/<version>.lock`
+  names a live process or cannot be read. All of this is checked again right
+  before each version is deleted. Container paths are checked individually before each bounded deletion batch.
 - **Rust builds are pruned in two parts.** `cargo-superseded` removes
   older hashes of a unit (`.rlib`, `.rmeta`, `.so`/`.dylib`/`.a`,
   `build/*`, `.fingerprint`) that a newer build replaced, but never while

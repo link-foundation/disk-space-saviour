@@ -403,8 +403,15 @@ export class Cleaner {
         },
         { rules: [rule] }
       );
-      if (!candidates.some((candidate) => candidate.path === item.path)) {
+      const current = candidates.find(
+        (candidate) => candidate.path === item.path
+      );
+      if (!current) {
         return `${item.path} is now current, pinned, or the newest installed version`;
+      }
+      // Locks of running processes and data reinstalling would not restore.
+      if (current.blockers.length > 0) {
+        return current.blockers[0];
       }
     }
     if (

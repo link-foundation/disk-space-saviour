@@ -10,6 +10,9 @@
  * matches (nvm runs the newest 20.x for `20`); otherwise it keeps them all.
  * `globalPackages` blocks versions holding packages the user installed
  * globally, which reinstalling the version would not bring back.
+ * `locks` names the lock file a manager writes for each running process of
+ * a version (`{version}` is replaced); a lock naming a live process, or one
+ * that cannot be read, keeps the version.
  *
  * `versionOf(dirPath)` maps an install directory to the version string that
  * defaults and pin files are compared with (see `versionMatches`).
@@ -114,6 +117,7 @@ export const VERSION_RULES = [
     dirs: ['~/.local/share/claude/versions/*'],
     installTypes: ['file'],
     defaultLinks: ['~/.local/bin/claude'],
+    locks: '~/.local/state/claude/locks/{version}.lock',
     busy: ['claude'],
     recheck: true,
   },

@@ -265,6 +265,42 @@ async function blockGlobalPackages(env, rule, dir, item) {
   }
 }
 
+/**
+ * Lock files a manager writes for every running process of a version
+ * (`rule.locks`, `{version}` replaced). A version stays while its lock names
+ * a live process, and while the lock or the process list cannot be read.
+ */
+async function blockLiveLock(context, rule, home, version, item) {
+  if (!rule.locks) {
+    return;
+  }
+  const { env } = context;
+  const file = expandRulePath(rule.locks.replace('{version}', version), {
+    home,
+    pathApi: env.path,
+  });
+  if (!(await env.exists(file))) {
+    return;
+  }
+  let pid = null;
+  try {
+    pid = JSON.parse((await env.readText(file)) ?? '').pid;
+  } catch {
+    pid = null;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) {
+    block(item, `${rule.manager} lock ${file} cannot be read`);
+    return;
+  }
+  context.lockProcesses ??= env.processes().catch(() => null);
+  const processes = await context.lockProcesses;
+  if (!processes) {
+    block(item, `cannot verify the process holding ${file}`);
+  } else if (processes.some((proc) => proc.pid === pid)) {
+    block(item, `locked by running ${rule.manager} (pid ${pid}, ${file})`);
+  }
+}
+
 async function blockPyenvEnvironments(env, rule, dir, item) {
   if (rule.id !== 'pyenv-python') {
     return;
@@ -321,6 +357,7 @@ async function ruleItems(context, rule, home, pins) {
     });
     await blockPyenvEnvironments(env, rule, dir, item);
     await blockGlobalPackages(env, rule, dir, item);
+    await blockLiveLock(context, rule, home, version, item);
     const busy = await scanTimeBusy(context, item);
     if (busy) {
       block(item, `busy: ${busy}`);
