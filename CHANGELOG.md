@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.20.0
+
+### Minor Changes
+
+- Clean every installed Chromium on-device AI model, including the current
+  version and the classifier model, in Chrome, Chromium and Edge. The browser
+  downloads a model again when a page uses its built-in AI; a loaded model or a
+  download in progress keeps it in place.
+
+  Keep a Claude Code version while its lock file names a running session or
+  cannot be read, and recheck locks, globally installed packages and other
+  version blockers right before deleting a toolchain version.
+
+  `--only` also targets a single item by its id and the items inside a path or
+  matching a glob. A run limited to global cache rules or their items scans only
+  those rules and skips project discovery.
+
+  A run limited to toolchain version rules, such as `--only claude-code-versions`,
+  scans only those rules and skips project discovery.
+
 ## 0.19.0
 
 ### Minor Changes
