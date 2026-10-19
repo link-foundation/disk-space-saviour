@@ -82,7 +82,14 @@ function tierSection(report, tier, options) {
     '',
     `${tier.toUpperCase()}  ${plural(items.length, 'item')}, ${formatBytes(bytes)}`,
     ...limited(
-      items.map((item) => itemLine(item, showEnv)),
+      items.flatMap((item) => [
+        itemLine(item, showEnv),
+        ...(item.globalPackages?.length
+          ? [
+              `      also removes global packages: ${item.globalPackages.join(', ')}`,
+            ]
+          : []),
+      ]),
       options.limit
     ),
   ];

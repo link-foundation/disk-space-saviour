@@ -20,6 +20,7 @@ import { timed } from '../timings.js';
 import { appCloneDetails } from './app-clones.js';
 import { gitDirectories } from '../git.js';
 import { networkRemotes } from '../git-remote.js';
+import { playwrightBlocker } from '../playwright-registry.js';
 
 export const GLOBAL_RULES = [
   ...CACHE_RULES,
@@ -256,6 +257,15 @@ async function addBlockers(context, rule, item) {
           })) {
         block(item, reason);
       }
+    }
+  }
+  if (rule.registry === 'playwright') {
+    context.playwrightRegistries ??= new Map();
+    for (const target of item.paths) {
+      block(
+        item,
+        await playwrightBlocker(env, target, context.playwrightRegistries)
+      );
     }
   }
   const busy = await scanTimeBusy(context, item);

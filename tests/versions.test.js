@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { compareVersions } from '../src/rules/versions.js';
+import { formatReport } from '../src/report.js';
 import { scan } from '../src/scan.js';
 import {
   DAY_MS,
@@ -63,7 +64,7 @@ describe('version manager pruning', () => {
   );
 
   itUnless(sandboxed)(
-    'resolves nvm refs to the newest match and keeps user globals',
+    'resolves nvm refs to the newest match and names the globals it removes',
     async () => {
       const root = tempRoot('dss-versions-nvm-');
       try {
@@ -98,9 +99,19 @@ describe('version manager pruning', () => {
         expect(items.has(newest)).toBe(false);
         expect(items.has(lts)).toBe(false);
         expect(items.get(old20)?.blockers).toEqual([]);
-        expect(items.get(tool)?.blockers).toEqual([
-          'has globally installed packages: @openapitools/generator, yarn',
+        expect(items.get(old20)?.globalPackages).toBe(undefined);
+        expect(items.get(tool)?.blockers).toEqual([]);
+        expect(items.get(tool)?.tier).toBe('moderate');
+        expect(items.get(tool)?.globalPackages).toEqual([
+          '@openapitools/generator',
+          'yarn',
         ]);
+        expect(formatReport(report)).toMatch(
+          /also removes global packages: @openapitools\/generator, yarn/
+        );
+        expect(items.get(tool)?.reason).toMatch(
+          /also removes its global packages: @openapitools\/generator, yarn$/
+        );
       } finally {
         removeRoot(root);
       }

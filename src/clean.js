@@ -39,6 +39,7 @@ import { GitInspector } from './git.js';
 import { HealthWatch } from './health.js';
 import { consentFlag, dropNested, selectByTier, tierRank } from './items.js';
 import { LivenessProbe } from './liveness.js';
+import { playwrightBlocker } from './playwright-registry.js';
 import { resolveOptions } from './options.js';
 import { isWithin } from './paths.js';
 import { OTHER_RULES } from './rules/other.js';
@@ -131,6 +132,11 @@ async function browserRevisionBlocker(env, item) {
     });
     if (!newer) {
       return `${target} is now the newest installed browser revision`;
+    }
+    const needed =
+      rule.registry === 'playwright' && (await playwrightBlocker(env, target));
+    if (needed) {
+      return needed;
     }
   }
   return null;

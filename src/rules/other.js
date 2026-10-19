@@ -15,7 +15,8 @@
  * trees with uncommitted, unpushed, or stashed changes. `git: 'clone'`
  * matches only Git work trees with an https or ssh remote, and refuses them
  * unless every worktree is clean and the remote still advertises every
- * local commit.
+ * local commit. `registry: 'playwright'` keeps revisions that a Playwright
+ * package recorded in the registry's `.links` still launches.
  */
 
 export const OTHER_RULES = [
@@ -32,15 +33,10 @@ export const OTHER_RULES = [
     versionPattern: /^(?<family>[a-z_]+)-(?<version>\d+)$/,
     minAge: 'inactive',
     tier: 'safe',
-    busy: [
-      'playwright',
-      'playwright-mcp',
-      'chrome',
-      'chromium',
-      'headless_shell',
-      'firefox',
-      'webkit',
-    ],
+    registry: 'playwright',
+    // A running Playwright launches the revisions its package names, which
+    // the registry check keeps; a revision a browser runs from is open.
+    busy: [],
   },
   {
     id: 'playwright-go-drivers',
@@ -521,6 +517,23 @@ export const OTHER_RULES = [
     ],
     minAge: 'stale',
     busy: ['chrome', 'chromium', 'headless_shell'],
+  },
+  {
+    id: 'tmp-playwright-browsers',
+    ecosystem: 'tmp',
+    scope: 'tmp',
+    description:
+      'Playwright browser installs and downloads in temporary directories',
+    paths: [
+      '{TMP}/playwright-download-*',
+      '{TMP}/ms-playwright',
+      '{TMP}/ms-playwright-*',
+      '{TMP}/*/ms-playwright',
+      '{TMP}/*/.cache/ms-playwright',
+      '{TMP}/*/Library/Caches/ms-playwright',
+    ],
+    minAge: 'stale',
+    busy: ['playwright', 'node', 'chrome', 'chromium', 'headless_shell'],
   },
   {
     id: 'node-tmp-caches',
