@@ -1,4 +1,4 @@
-import { scanItems } from '../env/scope.js';
+import { checkSignal, scanItems } from '../env/scope.js';
 /**
  * Global per-user caches (ecosystem download and compilation caches, IDE and
  * browser caches), system package caches, and leftovers in temporary
@@ -325,6 +325,9 @@ export async function scanGlobal(
 
     const accepted = [];
     for (const target of candidates) {
+      // Acceptance can read Git metadata of thousands of temporary entries
+      // without passing through the environment, so honour the budget here.
+      checkSignal(env.signal);
       if (
         !(await timed(context.timings, 'global:accept', () =>
           acceptedPath(env, rule, target, stats, seen)
@@ -383,14 +386,27 @@ export async function scanGlobal(
 }
 
 /**
+ * Whether `target` or one of its ancestors is in `claimed`. Both come from
+ * the same glob expansion, so ancestors compare as plain strings and the
+ * cost is the path depth, not the number of claimed paths.
+ */
+function claimedAbove(env, target, claimed) {
+  for (let dir = target; ; dir = env.path.dirname(dir)) {
+    if (claimed.has(dir)) {
+      return true;
+    }
+    if (env.path.dirname(dir) === dir) {
+      return false;
+    }
+  }
+}
+
+/**
  * A temporary directory holding a Git work tree with a network remote,
  * outside every path another rule (or a parent clone) already claimed.
  */
 async function tempClone(env, target, seen) {
-  if (
-    env.kind !== 'host' ||
-    [...seen].some((claimed) => isWithin(target, claimed, env.path))
-  ) {
+  if (env.kind !== 'host' || claimedAbove(env, target, seen)) {
     return false;
   }
   try {

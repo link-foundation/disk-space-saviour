@@ -79,7 +79,8 @@ function fakeApi({ status = 'planned', goalMet = true } = {}) {
 }
 
 async function run(argv, { io = fakeIo(), api = fakeApi() } = {}) {
-  const code = await runCli([...argv, '--json'], { io, api });
+  // --fresh keeps a recent real scan in the user's state dir out of the test.
+  const code = await runCli([...argv, '--json', '--fresh'], { io, api });
   const runs = api.calls.filter(([name]) => name !== 'scan');
   return { code, io, api, runs, last: runs.at(-1)?.[1] };
 }
