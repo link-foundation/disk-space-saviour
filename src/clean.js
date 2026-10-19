@@ -39,6 +39,7 @@ import { GitInspector } from './git.js';
 import { HealthWatch } from './health.js';
 import { consentFlag, dropNested, selectByTier, tierRank } from './items.js';
 import { LivenessProbe } from './liveness.js';
+import { playwrightBlocker } from './playwright-registry.js';
 import { resolveOptions } from './options.js';
 import { isWithin } from './paths.js';
 import { OTHER_RULES } from './rules/other.js';
@@ -131,6 +132,11 @@ async function browserRevisionBlocker(env, item) {
     });
     if (!newer) {
       return `${target} is now the newest installed browser revision`;
+    }
+    const needed =
+      rule.registry === 'playwright' && (await playwrightBlocker(env, target));
+    if (needed) {
+      return needed;
     }
   }
   return null;
@@ -476,6 +482,11 @@ export class Cleaner {
   }
 
   async #gitBlocker(ctx, item) {
+    if (item.recheck?.type === 'clone') {
+      ctx.git.invalidate();
+      const blockers = await ctx.git.cloneBlockers(item.path);
+      return blockers.length > 0 ? blockers.join('; ') : null;
+    }
     if (
       item.project ||
       item.rule === 'gh-issue-solver-workdirs' ||

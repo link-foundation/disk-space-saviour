@@ -1,4 +1,4 @@
-import { scanItems } from '../env/scope.js';
+import { checkSignal, scanItems } from '../env/scope.js';
 /**
  * Global per-user caches (ecosystem download and compilation caches, IDE and
  * browser caches), system package caches, and leftovers in temporary
@@ -7,7 +7,7 @@ import { scanItems } from '../env/scope.js';
  */
 
 import { CACHE_RULES } from '../rules/ecosystems.js';
-import { OTHER_RULES } from '../rules/other.js';
+import { OTHER_RULES, TEMP_CLONE_RULES } from '../rules/other.js';
 import { APP_RULES, expandChromiumCaches } from '../rules/apps.js';
 import { VERSION_RULES, compareVersions } from '../rules/versions.js';
 import { block, makeItem } from '../items.js';
@@ -18,6 +18,9 @@ import { TOOLCHAIN_CACHE_RULES } from '../rules/toolchains.js';
 import { DOWNLOAD_RULES } from '../rules/downloads.js';
 import { timed } from '../timings.js';
 import { appCloneDetails } from './app-clones.js';
+import { gitDirectories } from '../git.js';
+import { networkRemotes } from '../git-remote.js';
+import { playwrightBlocker } from '../playwright-registry.js';
 
 export const GLOBAL_RULES = [
   ...CACHE_RULES,
@@ -25,6 +28,7 @@ export const GLOBAL_RULES = [
   ...APP_RULES,
   ...TOOLCHAIN_CACHE_RULES,
   ...DOWNLOAD_RULES,
+  ...TEMP_CLONE_RULES,
 ];
 
 function scopeBases(rule, homes, tmpDirs) {
@@ -174,6 +178,12 @@ function olderVersions(env, rule, paths, stats) {
   return paths.filter((target) => old.has(target));
 }
 
+/** What cleanup re-verifies right before deleting, by the rule's `git` mode. */
+const GIT_RECHECKS = {
+  ifPresent: { type: 'scratch' },
+  clone: { type: 'clone' },
+};
+
 async function buildItem(context, rule, base, group, homes) {
   const { env } = context;
   const paths = group.map((entry) => entry.path);
@@ -196,7 +206,7 @@ async function buildItem(context, rule, base, group, homes) {
     reason: rule.minAge
       ? `untouched for longer than the ${rule.minAge === 'stale' ? 'activity' : 'inactivity'} window`
       : 're-downloaded or re-created on demand',
-    recheck: rule.git === 'ifPresent' ? { type: 'scratch' } : undefined,
+    recheck: GIT_RECHECKS[rule.git],
     action: action ?? { type: 'none' },
     checks: {
       busy: [
@@ -240,11 +250,22 @@ async function addBlockers(context, rule, item) {
   }
   if (rule.git) {
     for (const target of item.paths) {
-      for (const reason of await git.treeBlockers(target, {
-        allowNoRepo: rule.git === 'ifPresent',
-      })) {
+      for (const reason of rule.git === 'clone'
+        ? await git.cloneBlockers(target)
+        : await git.treeBlockers(target, {
+            allowNoRepo: rule.git === 'ifPresent',
+          })) {
         block(item, reason);
       }
+    }
+  }
+  if (rule.registry === 'playwright') {
+    context.playwrightRegistries ??= new Map();
+    for (const target of item.paths) {
+      block(
+        item,
+        await playwrightBlocker(env, target, context.playwrightRegistries)
+      );
     }
   }
   const busy = await scanTimeBusy(context, item);
@@ -314,9 +335,12 @@ export async function scanGlobal(
 
     const accepted = [];
     for (const target of candidates) {
+      // Acceptance can read Git metadata of thousands of temporary entries
+      // without passing through the environment, so honour the budget here.
+      checkSignal(env.signal);
       if (
         !(await timed(context.timings, 'global:accept', () =>
-          acceptedPath(env, rule, target, stats)
+          acceptedPath(env, rule, target, stats, seen)
         ))
       ) {
         continue;
@@ -371,12 +395,48 @@ export async function scanGlobal(
   return items;
 }
 
-async function acceptedPath(env, rule, target, stats) {
+/**
+ * Whether `target` or one of its ancestors is in `claimed`. Both come from
+ * the same glob expansion, so ancestors compare as plain strings and the
+ * cost is the path depth, not the number of claimed paths.
+ */
+function claimedAbove(env, target, claimed) {
+  for (let dir = target; ; dir = env.path.dirname(dir)) {
+    if (claimed.has(dir)) {
+      return true;
+    }
+    if (env.path.dirname(dir) === dir) {
+      return false;
+    }
+  }
+}
+
+/**
+ * A temporary directory holding a Git work tree with a network remote,
+ * outside every path another rule (or a parent clone) already claimed.
+ */
+async function tempClone(env, target, seen) {
+  if (env.kind !== 'host' || claimedAbove(env, target, seen)) {
+    return false;
+  }
+  try {
+    // Other users' temporary directories are unreadable; that is no error.
+    const { commonDir } = await gitDirectories(target);
+    return (await networkRemotes(commonDir)).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function acceptedPath(env, rule, target, stats, seen = new Set()) {
   const name = env.path.basename(target);
   if (rule.excludeNames?.includes(name)) {
     return false;
   }
   if (rule.directoryOnly && stats.get(target)?.type !== 'dir') {
+    return false;
+  }
+  if (rule.git === 'clone' && !(await tempClone(env, target, seen))) {
     return false;
   }
   if (rule.fileOnly && stats.get(target)?.type !== 'file') {

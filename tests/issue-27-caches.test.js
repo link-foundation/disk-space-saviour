@@ -56,7 +56,7 @@ describe('issue 18 cache coverage', () => {
         `${base}/media/cache-storage/blob`,
         `${base}/media/short-cache/blob`,
         `${base}/db.sqlite`,
-        `${base}/media/downloads/blob`,
+        `${base}/media/telegram-cloud-document-2-1`,
       ]);
       const safe = report.items
         .filter((item) => item.tier === 'safe')
@@ -68,8 +68,9 @@ describe('issue 18 cache coverage', () => {
       expect(
         report.items.some(
           (item) =>
-            item.paths.includes(join(home, base, 'media/downloads')) &&
-            item.tier === 'moderate'
+            item.paths.includes(
+              join(home, base, 'media/telegram-cloud-document-2-1')
+            ) && item.tier === 'moderate'
         )
       ).toBe(true);
     }

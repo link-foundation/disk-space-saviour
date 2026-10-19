@@ -12,7 +12,11 @@
  * otherwise each match is its own item. `minAge: 'stale'` only reports
  * matches untouched for the stale-age window, `minAge: 'inactive'` for the
  * project inactivity window. `git: true` refuses matches that are Git work
- * trees with uncommitted, unpushed, or stashed changes.
+ * trees with uncommitted, unpushed, or stashed changes. `git: 'clone'`
+ * matches only Git work trees with an https or ssh remote, and refuses them
+ * unless every worktree is clean and the remote still advertises every
+ * local commit. `registry: 'playwright'` keeps revisions that a Playwright
+ * package recorded in the registry's `.links` still launches.
  */
 
 export const OTHER_RULES = [
@@ -29,15 +33,10 @@ export const OTHER_RULES = [
     versionPattern: /^(?<family>[a-z_]+)-(?<version>\d+)$/,
     minAge: 'inactive',
     tier: 'safe',
-    busy: [
-      'playwright',
-      'playwright-mcp',
-      'chrome',
-      'chromium',
-      'headless_shell',
-      'firefox',
-      'webkit',
-    ],
+    registry: 'playwright',
+    // A running Playwright launches the revisions its package names, which
+    // the registry check keeps; a revision a browser runs from is open.
+    busy: [],
   },
   {
     id: 'playwright-go-drivers',
@@ -520,6 +519,23 @@ export const OTHER_RULES = [
     busy: ['chrome', 'chromium', 'headless_shell'],
   },
   {
+    id: 'tmp-playwright-browsers',
+    ecosystem: 'tmp',
+    scope: 'tmp',
+    description:
+      'Playwright browser installs and downloads in temporary directories',
+    paths: [
+      '{TMP}/playwright-download-*',
+      '{TMP}/ms-playwright',
+      '{TMP}/ms-playwright-*',
+      '{TMP}/*/ms-playwright',
+      '{TMP}/*/.cache/ms-playwright',
+      '{TMP}/*/Library/Caches/ms-playwright',
+    ],
+    minAge: 'stale',
+    busy: ['playwright', 'node', 'chrome', 'chromium', 'headless_shell'],
+  },
+  {
     id: 'node-tmp-caches',
     ecosystem: 'tmp',
     scope: 'tmp',
@@ -531,5 +547,35 @@ export const OTHER_RULES = [
     ],
     minAge: 'stale',
     busy: ['node'],
+  },
+];
+
+/**
+ * Checkouts cloned into temporary directories by tools, tests and agents,
+ * checked after every named rule so a more specific rule claims its own
+ * paths first.
+ */
+export const TEMP_CLONE_RULES = [
+  {
+    id: 'temp-git-clones',
+    ecosystem: 'tmp',
+    scope: 'tmp',
+    description:
+      'Git clones in temporary directories whose commits all exist on a remote',
+    tier: 'safe',
+    paths: ['{TMP}/*', '{TMP}/*/*'],
+    directoryOnly: true,
+    minAge: 'stale',
+    git: 'clone',
+    busy: [
+      'git',
+      'claude',
+      'codex',
+      'opencode',
+      'agent',
+      'node',
+      'bun',
+      'cargo',
+    ],
   },
 ];

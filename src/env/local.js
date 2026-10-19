@@ -333,6 +333,24 @@ export class LocalEnv {
     return heads;
   }
 
+  /** Another user's entry of a sticky shared directory such as /tmp is private by design. */
+  async #foreignTempEntry(dir) {
+    const io = this.options.fileFs ?? fsp;
+    try {
+      const [own, parent] = await Promise.all([
+        io.lstat(dir),
+        io.stat(path.dirname(dir)),
+      ]);
+      return (
+        typeof process.getuid === 'function' &&
+        own.uid !== process.getuid() &&
+        (parent.mode & 0o1000) !== 0
+      );
+    } catch {
+      return false;
+    }
+  }
+
   async list(dir, { discovery = false } = {}) {
     let names;
     try {
@@ -340,7 +358,9 @@ export class LocalEnv {
         withFileTypes: true,
       });
     } catch (error) {
-      this.recordAccessError(dir, error);
+      if (!(await this.#foreignTempEntry(dir))) {
+        this.recordAccessError(dir, error);
+      }
       return [];
     }
     const entries = await mapLimit(names, 32, async (entry) => {

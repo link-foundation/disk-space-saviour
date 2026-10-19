@@ -36,13 +36,14 @@ export const APP_RULES = [
   },
   {
     id: 'telegram-downloaded-media',
-    excludeNames: ['cache', 'cache-storage', 'short-cache'],
     ecosystem: 'apps',
     tier: 'moderate',
     description:
       'Telegram downloaded media: secret-chat media may not be recoverable',
+    // Only media Telegram downloads again from its cloud; `storage` holds
+    // the media database and `local-file-*` files the user sent.
     paths: [
-      `${telegramAccounts}/*`,
+      `${telegramAccounts}/telegram-cloud-*`,
       ...telegramDesktop.map((root) => `${root}/user_data/downloads`),
     ],
     busy: ['Telegram', 'telegram-desktop'],

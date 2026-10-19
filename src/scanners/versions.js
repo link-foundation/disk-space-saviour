@@ -235,11 +235,13 @@ function referencedInstalls(rule, installs, refs, versionOf) {
 }
 
 /**
- * Global packages a user installed into a version (`npm install -g`) are
- * lost with it. Packages bundled with the runtime and caches that are
- * installed again on demand (`rule.globalPackages.regenerable`) are not.
+ * Global packages a user installed into a version (`npm install -g`) go
+ * with it, so the item names them. Packages bundled with the runtime and
+ * caches installed again on demand (`rule.globalPackages.regenerable`) are
+ * not named. A package that is running keeps the version through the
+ * process checks: its binary, arguments or PATH entry lies inside.
  */
-async function blockGlobalPackages(env, rule, dir, item) {
+async function noteGlobalPackages(env, rule, dir, item) {
   if (!rule.globalPackages) {
     return;
   }
@@ -262,7 +264,8 @@ async function blockGlobalPackages(env, rule, dir, item) {
   if (own.length > 0) {
     const shown = own.slice(0, 5).join(', ');
     const more = own.length > 5 ? ` and ${own.length - 5} more` : '';
-    block(item, `has globally installed packages: ${shown}${more}`);
+    item.globalPackages = own;
+    item.reason += `; also removes its global packages: ${shown}${more}`;
   }
 }
 
@@ -357,7 +360,7 @@ async function ruleItems(context, rule, home, pins) {
           : null,
     });
     await blockPyenvEnvironments(env, rule, dir, item);
-    await blockGlobalPackages(env, rule, dir, item);
+    await noteGlobalPackages(env, rule, dir, item);
     await blockLiveLock(context, rule, home, version, item);
     const busy = await scanTimeBusy(context, item);
     if (busy) {

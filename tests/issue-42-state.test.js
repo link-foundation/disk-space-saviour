@@ -427,7 +427,13 @@ describe('issue 42 platform diagnostics', () => {
     expect(swap.holders[0].memoryBytes).toBe(22 * 1024 ** 3);
     expect(swap.attribution).toMatch(/does not expose per-process swap/);
     expect(swap.advice).toMatch(/lower its VM memory limit/);
-    expect(await readSwap({ ...env, platform: 'linux' })).toBe(null);
+    expect(await readSwap({ ...env, platform: 'win32' })).toBe(null);
+    expect(
+      await readSwap(
+        { ...env, platform: 'linux' },
+        { procRoot: '/dss-missing-proc' }
+      )
+    ).toBe(null);
     expect(parseSwapUsage('unavailable')).toBe(null);
   });
 

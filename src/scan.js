@@ -530,13 +530,17 @@ function envDescriptor(env, depth, chain) {
   };
 }
 
-async function withDisk(env, descriptor) {
+async function withDisk(env, descriptor, options) {
   const target = env.platform === 'win32' ? env.currentHome : '/';
   const disk = await env.diskUsage(target).catch(() => null);
   return {
     ...descriptor,
     disk: disk ? { path: target, ...disk } : null,
-    swap: await readSwap(env),
+    swap: await readSwap(env, {
+      stateDir: options.cacheDir,
+      disk,
+      now: options.now?.(),
+    }),
   };
 }
 
@@ -666,7 +670,7 @@ async function scanScoped(input) {
     environments.push(inner);
   }
   environments[0] = await timed(env.timings, 'disk', () =>
-    withDisk(env, environments[0])
+    withDisk(env, environments[0], options)
   );
   environments[0].timings = env.timings.toJSON();
   const report = buildReport({
