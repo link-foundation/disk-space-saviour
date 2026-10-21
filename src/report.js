@@ -114,6 +114,25 @@ function blockedSection(report, options) {
   ];
 }
 
+/**
+ * Clones that share every block with an installed app: `du` and Finder
+ * count them at full size, deleting them frees nothing.
+ */
+export function sharedSection(shared) {
+  if (!shared?.length) {
+    return [];
+  }
+  const apparent = shared.reduce((sum, item) => sum + item.apparentBytes, 0);
+  return [
+    '',
+    `SHARED WITH INSTALLED APPS  ${plural(shared.length, 'item')}, ${formatBytes(apparent)} as du counts it, about 0 B to free (APFS clones; the app recreates them at launch)`,
+    ...shared.map(
+      (item) =>
+        `  ${pad(formatBytes(item.apparentBytes), 10)}  ${item.rule}  ${item.path}  (shares its blocks with ${item.sharedWith})`
+    ),
+  ];
+}
+
 function tierBreakdown(tiers) {
   return TIERS.filter((tier) => tiers[tier])
     .map((tier) => `${tier} ${formatBytes(tiers[tier])}`)
@@ -473,6 +492,7 @@ export function formatReport(report, options = {}) {
   }
   lines.push(...report.environments.flatMap(environmentStatusLines));
   lines.push(...blockedSection(report, { limit }));
+  lines.push(...sharedSection(report.shared));
   lines.push(...conditionsSection(report.totals?.blocked, { limit }));
   lines.push(...dockerSection(report));
   lines.push(...errorsSection(report.errors));

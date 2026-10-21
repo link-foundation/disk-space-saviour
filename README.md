@@ -57,6 +57,7 @@ dss scan [paths...] [--docker] [--depth N] [--json]      # report only
 dss clean [paths...] --tier safe|moderate [--yes] [--older-than 1h]
 dss emergency --free 20G | --until 80% [--path /] [--yes]
 dss docker scan|clean [--container ID] [--recursive]
+dss usage [paths...] [--min-size 1G] [--json]            # where space goes
 ```
 
 | Exit code | Meaning                                  |
@@ -85,6 +86,22 @@ Run `dss --help` for every option. The most useful ones:
   Recent reports authenticated by this installation are reused; older, unsigned
   or edited reports require discovery again. Changing discovery or action options
   also rebuilds the plan. Every deletion still gets fresh checks.
+- `dss usage` shows where the space of a whole volume goes, including data
+  no rule covers. One read-only `du -axk` pass walks the macOS Data volume
+  (`/Users`, `/Applications`, `/private`, `/opt`, ...) or `/` on Linux, or
+  the given paths, staying on their filesystem. It prints a tree of the
+  largest directories (1% of the walk and up, or `--min-size`), the largest
+  files, and for each directory what the latest dss scan or clean found
+  inside it (`[dss: 1.2 GiB freeable, 3.4 GiB blocked]`). On macOS it adds
+  the APFS volumes a walk cannot see (system, VM swap, Preboot, Recovery),
+  local snapshots and the part of the Data volume left unread. It needs
+  `du`, so it runs on macOS and Linux; a full walk takes minutes.
+- APFS clones that share every block with an installed app, such as Chrome's
+  code-sign clones, free nothing when deleted, so they are never offered. The
+  scan lists them under `SHARED WITH INSTALLED APPS` and `dss usage` marks
+  them, because `du` and Finder count them at full size.
+- Git worktree folders (`.worktrees`, `worktrees`) restart the project search
+  depth, so dependencies of nested worktrees are found below `--max-depth`.
 - `clean` automatically reuses a matching scan from the last 30 minutes.
   `--fresh` bypasses this plan and the discovery/size index; `--cache-dir DIR`
   chooses the state location (default `$XDG_STATE_HOME/disk-space-saviour`, or

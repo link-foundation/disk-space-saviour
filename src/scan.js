@@ -523,6 +523,24 @@ export function filterItems(items, options, daemons = [], pathApi) {
   );
 }
 
+/**
+ * Items that share every block with an installed app (APFS clones): they
+ * free nothing, so they are not offered, but `du` counts them at full size.
+ */
+function sharedItems(items, options, pathApi) {
+  return filterItems(
+    items.filter((item) => item.sharedWith),
+    { ...options, minSizeBytes: 0 },
+    [],
+    pathApi
+  ).map((item) => ({
+    rule: item.rule,
+    path: item.path,
+    apparentBytes: item.apparentBytes,
+    sharedWith: item.sharedWith,
+  }));
+}
+
 function envDescriptor(env, depth, chain) {
   return {
     id: env.id,
@@ -672,6 +690,7 @@ async function scanScoped(input) {
     docker?.daemons ?? [],
     env.path
   );
+  const shared = sharedItems(hostItems, options, env.path);
   const environments = [envDescriptor(env, 0, [])];
   for (const inner of docker?.environments ?? []) {
     environments.push(inner);
@@ -684,6 +703,7 @@ async function scanScoped(input) {
     options,
     env,
     items,
+    shared,
     environments,
     docker,
     errors,
@@ -714,6 +734,7 @@ export function buildReport({
   options,
   env,
   items,
+  shared = [],
   environments,
   docker,
   errors,
@@ -729,6 +750,7 @@ export function buildReport({
     options: reportOptions(options),
     environments,
     items,
+    shared,
     totals: tierTotals(items),
     docker: docker
       ? {

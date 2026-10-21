@@ -9,6 +9,8 @@ import { existsSync, linkSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { scan } from '../src/scan.js';
 import { clean } from '../src/clean.js';
+import { formatReport } from '../src/report.js';
+import { scanItems, scanCoverage } from '../src/usage.js';
 import { itUnless, sandboxed } from './helpers/skip.js';
 import {
   age,
@@ -63,6 +65,30 @@ describe('Chromium code-sign clones', () => {
         expect(item.blockers.join('\n')).toMatch(/in use: .*Google Chrome is/);
         expect(item.bytes).toBe(0);
         expect(item.reason).toMatch(/shares its disk blocks/);
+      },
+      { installedBuild: true }
+    ));
+
+  it('explains a clone of the installed build it does not offer', () =>
+    cloneFixture(
+      async ({ clone, options }) => {
+        const report = await scan({ ...options, minSize: '1K' });
+        expect(
+          report.items.some((item) => item.rule === 'chromium-code-sign-clones')
+        ).toBe(false);
+        const [shared] = report.shared;
+        expect(shared.path).toBe(clone);
+        expect(shared.sharedWith).toMatch(/Google Chrome\.app$/);
+        expect(shared.apparentBytes > 0).toBe(true);
+        expect(formatReport(report)).toMatch(
+          /SHARED WITH INSTALLED APPS {2}1 item, .* about 0 B to free/
+        );
+        const coverage = scanCoverage(
+          dirname(clone),
+          scanItems(report, 'linux')
+        );
+        expect(coverage.freeable).toBe(0);
+        expect(coverage.shared.bytes).toBe(shared.apparentBytes);
       },
       { installedBuild: true }
     ));
