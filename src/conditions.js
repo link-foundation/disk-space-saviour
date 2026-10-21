@@ -111,3 +111,35 @@ export function blockedConditions(items) {
     other,
   };
 }
+
+/**
+ * Host processes named by blockers of a saved scan that no longer run, so
+ * the items they blocked may be free now and the scan is stale.
+ * @param {object} report saved scan
+ * @param {(pid: number) => boolean} alive
+ * @returns {number[]}
+ */
+export function exitedBlockerPids(report, alive) {
+  const pids = new Set();
+  for (const item of report.items ?? []) {
+    if (item.env !== 'host') {
+      continue;
+    }
+    for (const blocker of item.blockers ?? []) {
+      for (const match of blocker.matchAll(/\(pid (\d+)/g)) {
+        pids.add(Number(match[1]));
+      }
+    }
+  }
+  return [...pids].filter((pid) => !alive(pid));
+}
+
+/** Whether a process with `pid` exists, including other users' processes. */
+export function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}

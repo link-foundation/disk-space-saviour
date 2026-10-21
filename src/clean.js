@@ -1015,6 +1015,15 @@ export async function finishAudit(audit, report, options) {
   audit.environments = environmentTotals(report, audit.entries);
   // What the run had to leave, grouped by the condition that frees it.
   audit.blocked = report.totals?.blocked ?? null;
+  // Scanners an incomplete scan never reached contribute no items at all.
+  audit.incomplete = (report.environments ?? [])
+    .filter(
+      (env) =>
+        env.scanStatus &&
+        env.scanStatus !== 'complete' &&
+        env.scanStatus !== 'goal-reached'
+    )
+    .map((env) => ({ label: env.label, status: env.scanStatus }));
   if (options.audit !== false) {
     await writeAudit(audit, options);
   }

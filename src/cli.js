@@ -13,6 +13,7 @@ import { parseArgs } from 'node:util';
 
 import { startAudit, writeAudit } from './audit.js';
 import { clean } from './clean.js';
+import { exitedBlockerPids, pidAlive } from './conditions.js';
 import { emergency } from './emergency.js';
 import { setTrace } from './exec.js';
 import { resolveGoal, resolveOptions } from './options.js';
@@ -329,7 +330,12 @@ class Cli {
     const file = values.from ?? values.report;
     if (!file) {
       const recent = await loadScan(resolveOptions(options));
-      if (recent) {
+      const exited = recent ? exitedBlockerPids(recent, pidAlive) : [];
+      if (exited.length > 0) {
+        this.io.stderr(
+          `Scanning again: processes that blocked items in the scan from ${recent.createdAt} exited (pid ${exited.slice(0, 5).join(', ')}${exited.length > 5 ? ', …' : ''}).`
+        );
+      } else if (recent) {
         this.io.stderr(
           `Reusing scan from ${recent.createdAt}; planned items will be checked before deletion.`
         );

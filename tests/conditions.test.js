@@ -7,10 +7,19 @@ import { describe, it, expect } from 'test-anywhere';
 import { chmodSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { blockedConditions, blockerCondition } from '../src/conditions.js';
+import {
+  blockedConditions,
+  blockerCondition,
+  exitedBlockerPids,
+  pidAlive,
+} from '../src/conditions.js';
 import { LocalEnv } from '../src/env/local.js';
 import { LivenessProbe } from '../src/liveness.js';
-import { conditionsSection, conditionsWarning } from '../src/report.js';
+import {
+  conditionsSection,
+  conditionsWarning,
+  incompleteScanLines,
+} from '../src/report.js';
 import { removeRoot, tempRoot } from './helpers/fixtures.js';
 import { itUnless, sandboxed } from './helpers/skip.js';
 
@@ -171,4 +180,37 @@ describe('who keeps a path busy', () => {
       }
     }
   );
+});
+
+describe('stale saved scans', () => {
+  it('names host processes from blockers that have exited', () => {
+    const report = {
+      items: [
+        { env: 'host', blockers: ['busy: Telegram is running (pid 5)'] },
+        {
+          env: 'host',
+          blockers: [
+            'locked by running Claude Code (pid 8, /locks/2.1.lock)',
+            'busy: in use: /v/2.1 (pid 8, claude)',
+          ],
+        },
+        { env: 'docker:web', blockers: ['busy: node is running (pid 9)'] },
+        { env: 'host', blockers: [] },
+      ],
+    };
+    expect(exitedBlockerPids(report, (pid) => pid === 8)).toEqual([5]);
+    expect(exitedBlockerPids(report, () => true)).toEqual([]);
+    expect(pidAlive(process.pid)).toBe(true);
+  });
+});
+
+describe('plans built on an incomplete scan', () => {
+  it('warns that unreached items were not considered', () => {
+    expect(
+      incompleteScanLines([{ label: 'host', status: 'budget-exceeded' }])
+    ).toEqual([
+      'WARNING: the scan of host behind this plan stopped early (budget-exceeded), so items it did not reach were not considered; rerun with a larger --scan-budget (for example --scan-budget 5m).',
+    ]);
+    expect(incompleteScanLines(undefined)).toEqual([]);
+  });
 });

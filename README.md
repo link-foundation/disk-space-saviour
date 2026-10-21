@@ -163,7 +163,10 @@ is needed. Agent scratch cleanup requires inactivity and Git safety checks.
   stopping or a later scan finishing what this one ran out of time for.
   Items kept for Git state, protected installs or unverifiable records are
   counted apart. `clean` repeats the summary after the plan. Rerun dss once
-  a condition is met; it rechecks everything before deleting.
+  a condition is met; it rechecks everything before deleting. `clean` scans
+  again instead of reusing a saved scan when a process named by its blockers
+  has exited, and warns when the scan behind its plan stopped early (for
+  example at `--scan-budget`), since items it never reached are not planned.
 - **Toolchain versions are kept while anything may need them.** The
   manager's default and aliases, versions pinned by a project (`.nvmrc`,
   `rust-toolchain.toml`, ...) and the newest install stay. A partial nvm pin

@@ -553,6 +553,14 @@ function emergencyLines(audit) {
  * @param {object} audit
  * @param {{verbose?: boolean}} [options]
  */
+/** Warns that a plan built on an incomplete scan misses what it never reached. */
+export function incompleteScanLines(incomplete) {
+  return (incomplete ?? []).map(
+    (env) =>
+      `WARNING: the scan of ${env.label} behind this plan stopped early (${env.status}), so items it did not reach were not considered; rerun with a larger --scan-budget (for example --scan-budget 5m).`
+  );
+}
+
 export function formatAudit(audit, options = {}) {
   const limit = options.verbose ? Infinity : DEFAULT_LIMIT * 2;
   const mode = audit.dryRun ? 'dry run, nothing was deleted' : 'deleting';
@@ -581,6 +589,7 @@ export function formatAudit(audit, options = {}) {
       ? `Would free ${formatBytes(audit.plannedBytes)} (run with --yes to delete)`
       : `Freed ${formatBytes(audit.freedBytes)}`
   );
+  lines.push(...incompleteScanLines(audit.incomplete));
   const conditions = conditionsWarning(audit.blocked);
   if (conditions) {
     lines.push(
