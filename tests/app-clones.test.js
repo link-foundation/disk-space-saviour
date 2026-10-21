@@ -83,6 +83,10 @@ describe('Chromium code-sign clones', () => {
         expect(formatReport(report)).toMatch(
           /SHARED WITH INSTALLED APPS {2}1 item, .* about 0 B to free/
         );
+        if (process.platform === 'win32') {
+          // `dss usage` walks with du and compares POSIX paths.
+          return;
+        }
         const coverage = scanCoverage(
           dirname(clone),
           scanItems(report, 'linux')
