@@ -117,7 +117,11 @@ describe('who keeps a path busy', () => {
     ).toBe('Warp (stable) is running (pid 1206)');
   });
 
-  itUnless(sandboxed || process.getuid?.() === 0)(
+  itUnless(
+    sandboxed,
+    process.platform === 'win32' && 'Windows ignores POSIX directory modes',
+    process.getuid?.() === 0 && 'root enters every directory'
+  )(
     'collapses access errors inside directories this user cannot enter',
     async () => {
       const root = tempRoot('dss-foreign-');
