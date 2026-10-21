@@ -528,7 +528,7 @@ export class LivenessProbe {
           candidate &&
           paths.some((target) => isWithin(candidate, target, this.env.path))
         ) {
-          return `in use: ${candidate} (pid ${proc.pid})`;
+          return `in use: ${candidate} (pid ${proc.pid}, ${appLabel(proc, proc.name)})`;
         }
       }
     }

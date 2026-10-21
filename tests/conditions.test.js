@@ -117,6 +117,34 @@ describe('who keeps a path busy', () => {
     ).toBe('Warp (stable) is running (pid 1206)');
   });
 
+  it('names the process whose command line runs from a path', async () => {
+    const env = {
+      path: path.posix,
+      processes: () =>
+        Promise.resolve([
+          {
+            pid: 8593,
+            name: 'node',
+            command:
+              'node /npx/abc/node_modules/.bin/playwright-mcp --headless',
+          },
+        ]),
+      openPaths: () => Promise.resolve(new Set()),
+    };
+    const live = new LivenessProbe(env, { staleAgeMs: 3600e3 });
+    await live.refresh();
+    const reason = live.busyReason({
+      paths: ['/npx/abc'],
+      checks: { mtime: false },
+    });
+    expect(reason).toBe(
+      'in use: /npx/abc/node_modules/.bin/playwright-mcp (pid 8593, node)'
+    );
+    expect(blockerCondition(`busy: ${reason}`).action).toBe(
+      'node (pid 8593) exits'
+    );
+  });
+
   itUnless(
     sandboxed,
     process.platform === 'win32' && 'Windows ignores POSIX directory modes',
