@@ -282,7 +282,9 @@ describe('liveness re-checks right before deleting', () => {
         tier: 'moderate',
         audit: false,
       });
-      expect(audit.entries[0].reason).toMatch(/^busy: in use: .*index\.js$/);
+      expect(audit.entries[0].reason).toMatch(
+        /^busy: in use: .*index\.js(?: \(pid \d+[^)]*\))?$/
+      );
       expect(existsSync(modules)).toBe(true);
     } finally {
       holder.kill();

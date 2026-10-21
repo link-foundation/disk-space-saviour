@@ -149,6 +149,21 @@ is needed. Agent scratch cleanup requires inactivity and Git safety checks.
   cache, while `bun install`, `bunx` or an auto-installing script does.
   A directory on the `PATH` of a running process is kept too: the process
   may still start programs from it.
+- **Per-app macOS folders stay while their app runs.** Caches, containers
+  and other folders under `~/Library/<kind>/<bundle-id>` belong to the app
+  with that bundle identifier, read from the `Info.plist` of every bundle a
+  running process starts from. Such a folder is blocked while that app, a
+  helper or an updater of it runs (for example the WebKit cache of Music,
+  Telegram's group container), even when no rule names the app's process.
+  A path held open names its holder: `in use: <path> (pid N, App)`.
+- **Blocked space is grouped by what frees it.** A `WARNING:` line and the
+  `FREEABLE ON CONDITIONS` section total blocked space by the condition that
+  clears every blocker of an item: quit an app, a process or Claude Code
+  session ending, files closing, the activity window passing, a container
+  stopping or a later scan finishing what this one ran out of time for.
+  Items kept for Git state, protected installs or unverifiable records are
+  counted apart. `clean` repeats the summary after the plan. Rerun dss once
+  a condition is met; it rechecks everything before deleting.
 - **Toolchain versions are kept while anything may need them.** The
   manager's default and aliases, versions pinned by a project (`.nvmrc`,
   `rust-toolchain.toml`, ...) and the newest install stay. A partial nvm pin

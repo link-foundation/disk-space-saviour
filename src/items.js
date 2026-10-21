@@ -7,6 +7,8 @@
  * named flag (or an interactive yes) on top of their tier being selected.
  */
 
+import { blockedConditions } from './conditions.js';
+
 export const TIERS = ['safe', 'moderate', 'aggressive'];
 
 /**
@@ -111,6 +113,7 @@ export function tierTotals(items) {
     unknownBytes: blocked
       .filter((item) => item.sizeUnknown)
       .reduce((sum, item) => sum + (item.totalBytes ?? item.bytes), 0),
+    ...blockedConditions(blocked),
   };
   return totals;
 }

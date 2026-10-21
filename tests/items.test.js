@@ -78,6 +78,8 @@ describe('tier selection', () => {
       bytes: 7,
       totalBytes: 7,
       unknownBytes: 0,
+      conditions: [],
+      other: { items: 1, bytes: 7 },
     });
   });
 

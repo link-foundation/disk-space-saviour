@@ -377,11 +377,18 @@ async function scanEnvironmentScoped(
       block(item, env.scanPolicy.removalReason(target));
     }
   }
-  for (const message of env.accessErrors?.values() ?? []) {
+  for (const message of await accessErrorMessages(env)) {
     errors.push({ env: env.id, scanner: 'filesystem', message });
   }
   env.scanStatus = incomplete ? 'error' : 'complete';
   return items;
+}
+
+/** Report messages for paths the scan could not inspect. */
+function accessErrorMessages(env) {
+  return env.accessErrorMessages
+    ? env.accessErrorMessages()
+    : [...(env.accessErrors?.values() ?? [])];
 }
 
 async function attributeStorage(env, items) {

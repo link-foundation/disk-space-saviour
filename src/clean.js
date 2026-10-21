@@ -1013,6 +1013,8 @@ export async function finishAudit(audit, report, options) {
     .filter((e) => e.status === 'planned')
     .reduce((sum, e) => sum + e.plannedBytes, 0);
   audit.environments = environmentTotals(report, audit.entries);
+  // What the run had to leave, grouped by the condition that frees it.
+  audit.blocked = report.totals?.blocked ?? null;
   if (options.audit !== false) {
     await writeAudit(audit, options);
   }

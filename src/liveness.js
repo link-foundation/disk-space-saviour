@@ -17,6 +17,12 @@
 
 import path from 'node:path';
 
+import {
+  bundleRoots,
+  bundlesOwn,
+  ownerBundleId,
+  processBundles,
+} from './app-owners.js';
 import { isWithin } from './paths.js';
 import { formatDuration } from './units.js';
 
@@ -195,6 +201,12 @@ export function matchingName(proc, names) {
   return null;
 }
 
+/** `matched`, prefixed with the app it runs from: `Warp (stable)`. */
+function appLabel(proc, matched) {
+  const app = proc.bundles?.[0]?.name;
+  return app && app !== matched ? `${app} (${matched})` : matched;
+}
+
 export class LivenessProbe {
   /**
    * @param {object} env environment adapter
@@ -213,6 +225,8 @@ export class LivenessProbe {
     this.pathOwners = new Map();
     this.pathStats = new Map();
     this.inodes = new Map();
+    // Bundle identifiers never change, so they outlive refreshes.
+    this.bundleIds = new Map();
   }
 
   async refresh(force = false) {
@@ -224,6 +238,7 @@ export class LivenessProbe {
     this.listed = processes !== null;
     this.processes = processes ?? [];
     this.bunCacheUsers = await this.#bunCacheUsers();
+    await this.#resolveBundles();
     this.probeError =
       (processes === null || this.openPaths === null) &&
       (this.env.platform === 'linux' || this.env.platform === 'darwin');
@@ -232,6 +247,52 @@ export class LivenessProbe {
     this.pathStats.clear();
     this.pathOwners.clear();
     this.inodes.clear();
+  }
+
+  /** Reads the identifiers of the app bundles running processes come from. */
+  async #resolveBundles() {
+    if (!this.env.bundleIdentifier) {
+      return;
+    }
+    for (const proc of this.processes) {
+      const roots = bundleRoots(proc.executable);
+      for (const root of roots) {
+        if (!this.bundleIds.has(root)) {
+          this.bundleIds.set(
+            root,
+            await this.env.bundleIdentifier(root).catch(() => null)
+          );
+        }
+      }
+      proc.bundles = processBundles(roots, this.bundleIds);
+    }
+  }
+
+  /** ` (pid N, name)` of the process holding `open`, when the probe knows it. */
+  #holder(open) {
+    const pid = this.env.openPathPids?.get(open);
+    if (!pid) {
+      return '';
+    }
+    const proc = this.processes.find((entry) => entry.pid === pid);
+    return proc
+      ? ` (pid ${pid}, ${appLabel(proc, proc.name)})`
+      : ` (pid ${pid})`;
+  }
+
+  /** A running app that owns a per-app Library folder of `paths`. */
+  appUsage(paths) {
+    const owners = [...new Set(paths.map(ownerBundleId).filter(Boolean))];
+    if (owners.length === 0) {
+      return null;
+    }
+    for (const proc of this.processes) {
+      const owner = owners.find((id) => bundlesOwn(proc.bundles ?? [], id));
+      if (owner) {
+        return `${appLabel(proc, proc.name)} is running (pid ${proc.pid}) and owns ${owner}`;
+      }
+    }
+    return null;
   }
 
   /**
@@ -405,10 +466,11 @@ export class LivenessProbe {
       ) {
         continue;
       }
-      const name = matchingName(proc, names);
-      if (!name) {
+      const matched = matchingName(proc, names);
+      if (!matched) {
         continue;
       }
+      const name = appLabel(proc, matched);
       if (!cwd) {
         return `${name} is running (pid ${proc.pid})`;
       }
@@ -431,7 +493,7 @@ export class LivenessProbe {
     for (const open of this.openPaths) {
       for (const target of targets) {
         if (isWithin(open, target, pathApi)) {
-          return `in use: ${open}`;
+          return `in use: ${open}${this.#holder(open)}`;
         }
       }
     }
@@ -555,6 +617,7 @@ export class LivenessProbe {
       this.probeBlocker() ??
       (checks.mtime === false ? null : this.recentWrite(item.newestMtimeMs)) ??
       this.runningTool(checks.busy, checks.cwd, item) ??
+      this.appUsage(item.paths ?? []) ??
       this.processUsage(paths) ??
       this.executableUsage(checks.executables) ??
       this.uncertainUsage(item.paths ?? [])
