@@ -13,14 +13,16 @@ import { parseArgs } from 'node:util';
 
 import { startAudit, writeAudit } from './audit.js';
 import { clean } from './clean.js';
+import { exitedBlockerPids, pidAlive } from './conditions.js';
 import { emergency } from './emergency.js';
 import { setTrace } from './exec.js';
 import { resolveGoal, resolveOptions } from './options.js';
 import { formatAudit, formatReport } from './report.js';
 import { scan } from './scan.js';
+import { formatUsage, usage } from './usage.js';
 import { cleanDuringScan } from './fast-clean.js';
 import { defaultStateDirectory, loadScan } from './scan-state.js';
-import { formatBytes } from './units.js';
+import { formatBytes, parseSize } from './units.js';
 
 export const USAGE = `Usage: dss <command> [paths...] [options]
 
@@ -28,6 +30,9 @@ Commands:
   scan [paths...]            Report reclaimable space (never deletes)
   clean [paths...]           Delete what the chosen tier allows
   emergency                  Escalate tiers until a free-space goal is met
+  usage [paths...]           Show where space goes on whole volumes: the
+                             largest directories and files, what dss can
+                             free inside them, APFS volumes (never deletes)
   docker scan|clean          Only Docker: daemons, containers, nested daemons
   help, version
 
@@ -288,7 +293,7 @@ export function processIo() {
   };
 }
 
-const API = { scan, clean, emergency, cleanDuringScan };
+const API = { scan, clean, emergency, cleanDuringScan, usage };
 
 class Cli {
   constructor(io, api) {
@@ -303,6 +308,23 @@ class Cli {
   async scan(options, values) {
     const report = await this.api.scan(options);
     return this.printScan(report, options, values);
+  }
+
+  async usage(options, values) {
+    const report = await this.api.usage({
+      roots: options.roots,
+      // Without --min-size the tree shows directories of 1% of a root.
+      minSize: values['min-size'] ? parseSize(values['min-size']) : undefined,
+      verbose: values.verbose,
+      signal: options.signal,
+      auditDir: options.auditDir,
+      onUsageProgress: (progress) =>
+        this.io.stderr(
+          `[usage] ${progress.root}: ${Math.round(progress.elapsedMs / 1000)}s, ${progress.entries.toLocaleString('en-US')} entries, at ${progress.at ?? progress.root}`
+        ),
+    });
+    this.print(values, report, () => formatUsage(report));
+    return 0;
   }
 
   async printScan(report, options, values) {
@@ -329,7 +351,12 @@ class Cli {
     const file = values.from ?? values.report;
     if (!file) {
       const recent = await loadScan(resolveOptions(options));
-      if (recent) {
+      const exited = recent ? exitedBlockerPids(recent, pidAlive) : [];
+      if (exited.length > 0) {
+        this.io.stderr(
+          `Scanning again: processes that blocked items in the scan from ${recent.createdAt} exited (pid ${exited.slice(0, 5).join(', ')}${exited.length > 5 ? ', …' : ''}).`
+        );
+      } else if (recent) {
         this.io.stderr(
           `Reusing scan from ${recent.createdAt}; planned items will be checked before deletion.`
         );
@@ -491,6 +518,8 @@ function dispatch(cli, command, options, values) {
       return cli.clean(options, values);
     case 'emergency':
       return cli.emergency(options, values);
+    case 'usage':
+      return cli.usage(options, values);
     case 'docker-scan':
       return cli.scan(dockerOnly(options, values), values);
     case 'docker-clean':

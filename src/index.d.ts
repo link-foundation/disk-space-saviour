@@ -219,6 +219,16 @@ export interface Report {
   options: Record<string, unknown>;
   environments: EnvironmentDescriptor[];
   items: Item[];
+  /**
+   * Host items that share every block with an installed app (APFS clones):
+   * never offered, listed so the space `du` counts for them is explained.
+   */
+  shared?: Array<{
+    rule: string;
+    path: string;
+    apparentBytes: number;
+    sharedWith: string;
+  }>;
   /** Tier totals exclude items that need explicit consent (`consent`). */
   totals: Record<Tier | 'blocked' | 'consent', TierTotal>;
   docker: {
@@ -299,6 +309,50 @@ export declare function clean(
 
 /** Escalates tiers until the free-space goal is met, then stops. */
 export declare function emergency(options: EmergencyOptions): Promise<AuditLog>;
+
+export interface UsageOptions {
+  /** Directories to walk; default the macOS Data volume or `/`. */
+  roots?: string[] | null;
+  /** Smallest directory in the tree, in bytes; default 1% of a root. */
+  minSize?: number;
+  verbose?: boolean;
+  signal?: AbortSignal;
+  auditDir?: string;
+  onUsageProgress?: (progress: {
+    root: string;
+    elapsedMs: number;
+    entries: number;
+    at: string | null;
+  }) => void;
+}
+
+export interface UsageReport {
+  schema: 1;
+  createdAt: string;
+  durationMs: number;
+  platform: string;
+  scan: { file: string; createdAt: string | null } | null;
+  roots: Array<{
+    root: string;
+    path: string;
+    bytes: number;
+    entries: number;
+    tree: object;
+    files: Array<{ path: string; bytes: number }>;
+    [key: string]: unknown;
+  }>;
+  volumes: Array<{
+    name: string;
+    mount: string | null;
+    bytes: number;
+    role: string;
+  }>;
+  snapshots: number | null;
+}
+
+/** Shows where the space of whole volumes goes. Never deletes. */
+export declare function usage(options?: UsageOptions): Promise<UsageReport>;
+export declare function formatUsage(report: UsageReport): string;
 
 export declare function formatReport(
   report: Report,

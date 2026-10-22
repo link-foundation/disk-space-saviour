@@ -89,7 +89,7 @@ export function parsePsSearchPaths(output) {
  * host and inside containers (see shell.js).
  */
 
-import { promises as fsp } from 'node:fs';
+import { constants as fsConstants, promises as fsp } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { URL, fileURLToPath } from 'node:url';
@@ -97,6 +97,7 @@ import { procIdentity, procOpenPaths } from './proc.js';
 import { CACHE_VARIABLES } from './cache-roots.js';
 
 import { hostExecutor } from '../exec.js';
+import { parseBundleIdentifier } from '../app-owners.js';
 import { matchesGlob } from '../paths.js';
 import { mapLimit } from './parallel.js';
 import { directoryFingerprint, SIZE_MAX_AGE } from '../scan-state.js';
@@ -249,6 +250,36 @@ export class LocalEnv {
       target,
       `cannot inspect ${target}: ${error.code}${advice}`
     );
+  }
+
+  /**
+   * Access errors as report messages. Paths inside a directory this user
+   * cannot enter collapse into one line: nothing inside such a directory
+   * can be deleted by this user, so no candidate hides there.
+   * @returns {Promise<string[]>}
+   */
+  async accessErrorMessages() {
+    const messages = [];
+    const foreign = new Set();
+    for (const [target, message] of this.accessErrors ?? []) {
+      const parent = path.dirname(target);
+      const enterable = await fsp
+        .access(parent, fsConstants.X_OK)
+        .then(() => true)
+        .catch(() => false);
+      if (enterable) {
+        messages.push(message);
+      } else {
+        foreign.add(parent);
+      }
+    }
+    if (foreign.size > 0) {
+      const [example] = [...foreign].sort();
+      messages.push(
+        `skipped ${foreign.size} ${foreign.size === 1 ? 'directory' : 'directories'} this user cannot enter, such as ${example}; nothing inside can be deleted without their owner's rights`
+      );
+    }
+    return messages;
   }
 
   async #lstat(target) {
@@ -830,6 +861,8 @@ export class LocalEnv {
       .map((m) => ({
         pid: Number(m[1]),
         name: path.basename(m[2].trim()),
+        // macOS `comm` is the executable's full path.
+        executable: m[2].trim(),
         cwd: cwds.get(Number(m[1])) ?? null,
         command: commands.get(Number(m[1])) ?? '',
         searchPath: searchPaths.get(Number(m[1])) ?? [],
@@ -978,18 +1011,48 @@ export class LocalEnv {
       if (result.code !== 0 && !result.stdout) {
         return null;
       }
-      return new Set(
-        result.stdout
-          .split('\n')
-          .filter((line) => line.startsWith('n/'))
-          .map((line) => line.slice(1))
-      );
+      // `-F` always prints the pid (`p`) before the files of a process.
+      const paths = new Set();
+      const owners = new Map();
+      let pid = null;
+      for (const line of result.stdout.split('\n')) {
+        if (line.startsWith('p')) {
+          pid = Number(line.slice(1));
+        } else if (line.startsWith('n/')) {
+          paths.add(line.slice(1));
+          if (!owners.has(line.slice(1))) {
+            owners.set(line.slice(1), pid);
+          }
+        }
+      }
+      this.openPathPids = owners;
+      return paths;
     }
     return null;
   }
 
   run(argv, options) {
     return this.executor.run(argv, options);
+  }
+
+  /** `CFBundleIdentifier` of a macOS bundle, or null. */
+  async bundleIdentifier(bundle) {
+    if (this.platform !== 'darwin') {
+      return null;
+    }
+    const plist = path.join(bundle, 'Contents', 'Info.plist');
+    const text = await fsp.readFile(plist, 'utf8').catch(() => null);
+    if (text === null) {
+      return null;
+    }
+    if (!text.startsWith('bplist')) {
+      return parseBundleIdentifier(text);
+    }
+    const result = await this.run(
+      ['plutil', '-extract', 'CFBundleIdentifier', 'raw', '-o', '-', plist],
+      { timeoutMs: 10000 }
+    ).catch(() => null);
+    return result?.code === 0 ? result.stdout.trim() || null : null;
   }
 
   async which(command) {

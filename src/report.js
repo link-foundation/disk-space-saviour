@@ -114,6 +114,72 @@ function blockedSection(report, options) {
   ];
 }
 
+/**
+ * Clones that share every block with an installed app: `du` and Finder
+ * count them at full size, deleting them frees nothing.
+ */
+export function sharedSection(shared) {
+  if (!shared?.length) {
+    return [];
+  }
+  const apparent = shared.reduce((sum, item) => sum + item.apparentBytes, 0);
+  return [
+    '',
+    `SHARED WITH INSTALLED APPS  ${plural(shared.length, 'item')}, ${formatBytes(apparent)} as du counts it, about 0 B to free (APFS clones; the app recreates them at launch)`,
+    ...shared.map(
+      (item) =>
+        `  ${pad(formatBytes(item.apparentBytes), 10)}  ${item.rule}  ${item.path}  (shares its blocks with ${item.sharedWith})`
+    ),
+  ];
+}
+
+function tierBreakdown(tiers) {
+  return TIERS.filter((tier) => tiers[tier])
+    .map((tier) => `${tier} ${formatBytes(tiers[tier])}`)
+    .join(', ');
+}
+
+/** One-line warning naming the largest conditions, or null. */
+export function conditionsWarning(blocked) {
+  const conditions = blocked?.conditions ?? [];
+  if (conditions.length === 0) {
+    return null;
+  }
+  const bytes = conditions.reduce((sum, group) => sum + group.bytes, 0);
+  const top = conditions
+    .slice(0, 3)
+    .map((group) => `${group.action} (${formatBytes(group.bytes)})`);
+  const more = conditions.length > 3 ? `, ${conditions.length - 3} more` : '';
+  return `${formatBytes(bytes)} more frees only once something stops using it: ${top.join('; ')}${more}. See FREEABLE ON CONDITIONS.`;
+}
+
+function conditionsWarningLines(blocked) {
+  const warning = conditionsWarning(blocked);
+  return warning ? [`WARNING: ${warning}`] : [];
+}
+
+/** Blocked space grouped by the condition that frees it. */
+export function conditionsSection(blocked, options = {}) {
+  const conditions = blocked?.conditions ?? [];
+  if (conditions.length === 0) {
+    return [];
+  }
+  const lines = conditions.map(
+    (group) =>
+      `  ${pad(formatBytes(group.bytes), 9)}  ${group.action} (${plural(group.items, 'item')}: ${tierBreakdown(group.tiers)})`
+  );
+  if (blocked.other?.items) {
+    lines.push(
+      `  ${pad(formatBytes(blocked.other.bytes), 9)}  kept for other reasons (Git state, still needed, protected or unverifiable): ${plural(blocked.other.items, 'item')}`
+    );
+  }
+  return [
+    '',
+    'FREEABLE ON CONDITIONS (blocked items free once these happen; rerun dss afterwards)',
+    ...limited(lines, options.limit ?? DEFAULT_LIMIT),
+  ];
+}
+
 function repoSummary(repo) {
   if (repo.error) {
     return `${repo.root}: ${repo.error}`;
@@ -375,6 +441,37 @@ function holderLine(holder) {
   return `${holder.pid} ${holder.command}: ${details.join(', ')}`;
 }
 
+function swapLines(swap) {
+  if (!swap) {
+    return [];
+  }
+  return [
+    `Swap: ${formatBytes(swap.used)} used of ${formatBytes(swap.total)} (managed by macOS)`,
+    ...(swap.warnings ?? []).map((warning) => `WARNING: ${warning}`),
+    swap.attribution,
+    ...swap.holders.map((holder) => `  ${holderLine(holder)}`),
+    swap.advice,
+  ];
+}
+
+function environmentStatusLines(env) {
+  const lines = [];
+  if (env.layerSource) {
+    lines.push(`  ${env.label}: layer source ${env.layerSource}`);
+  }
+  if (env.scanStatus === 'goal-reached') {
+    lines.push(
+      `  ${env.label}: scan stopped after the free-space goal was met`
+    );
+  } else if (env.scanStatus && env.scanStatus !== 'complete') {
+    lines.push(`  ${env.label}: scan incomplete (${env.scanStatus})`);
+  }
+  if (env.hint) {
+    lines.push(`  ${env.label}: ${env.hint}`);
+  }
+  return lines;
+}
+
 /**
  * Renders a scan report.
  * @param {object} report
@@ -388,38 +485,15 @@ export function formatReport(report, options = {}) {
     `disk-space-saviour scan of ${host.label} in ${(report.durationMs / 1000).toFixed(1)}s (report only, nothing was deleted)`,
     formatDisk(host.disk),
   ];
-  if (host.swap) {
-    lines.push(
-      `Swap: ${formatBytes(host.swap.used)} used of ${formatBytes(host.swap.total)} (managed by macOS)`
-    );
-    for (const warning of host.swap.warnings ?? []) {
-      lines.push(`WARNING: ${warning}`);
-    }
-    lines.push(host.swap.attribution);
-    for (const holder of host.swap.holders) {
-      lines.push(`  ${holderLine(holder)}`);
-    }
-    lines.push(host.swap.advice);
-  }
+  lines.push(...swapLines(host.swap));
+  lines.push(...conditionsWarningLines(report.totals?.blocked));
   for (const tier of TIERS) {
     lines.push(...tierSection(report, tier, { limit }));
   }
-  for (const env of report.environments) {
-    if (env.layerSource) {
-      lines.push(`  ${env.label}: layer source ${env.layerSource}`);
-    }
-    if (env.scanStatus === 'goal-reached') {
-      lines.push(
-        `  ${env.label}: scan stopped after the free-space goal was met`
-      );
-    } else if (env.scanStatus && env.scanStatus !== 'complete') {
-      lines.push(`  ${env.label}: scan incomplete (${env.scanStatus})`);
-    }
-    if (env.hint) {
-      lines.push(`  ${env.label}: ${env.hint}`);
-    }
-  }
+  lines.push(...report.environments.flatMap(environmentStatusLines));
   lines.push(...blockedSection(report, { limit }));
+  lines.push(...sharedSection(report.shared));
+  lines.push(...conditionsSection(report.totals?.blocked, { limit }));
   lines.push(...dockerSection(report));
   lines.push(...errorsSection(report.errors));
   lines.push(...totalsSection(report));
@@ -499,6 +573,14 @@ function emergencyLines(audit) {
  * @param {object} audit
  * @param {{verbose?: boolean}} [options]
  */
+/** Warns that a plan built on an incomplete scan misses what it never reached. */
+export function incompleteScanLines(incomplete) {
+  return (incomplete ?? []).map(
+    (env) =>
+      `WARNING: the scan of ${env.label} behind this plan stopped early (${env.status}), so items it did not reach were not considered; rerun with a larger --scan-budget (for example --scan-budget 5m).`
+  );
+}
+
 export function formatAudit(audit, options = {}) {
   const limit = options.verbose ? Infinity : DEFAULT_LIMIT * 2;
   const mode = audit.dryRun ? 'dry run, nothing was deleted' : 'deleting';
@@ -527,6 +609,14 @@ export function formatAudit(audit, options = {}) {
       ? `Would free ${formatBytes(audit.plannedBytes)} (run with --yes to delete)`
       : `Freed ${formatBytes(audit.freedBytes)}`
   );
+  lines.push(...incompleteScanLines(audit.incomplete));
+  const conditions = conditionsWarning(audit.blocked);
+  if (conditions) {
+    lines.push(
+      conditions,
+      ...conditionsSection(audit.blocked, options).slice(2)
+    );
+  }
   if (audit.file) {
     lines.push(`Audit log: ${audit.file}`);
   }

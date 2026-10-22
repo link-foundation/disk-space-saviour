@@ -238,6 +238,10 @@ async function describeAppClone(context, rule, item, homes) {
   item.checks.executables = executables;
   if (sharedWith) {
     // Every block is shared with the installed app: nothing to reclaim.
+    // The report lists it under `shared` so the space `du` counts for it
+    // is explained.
+    item.sharedWith = sharedWith;
+    item.apparentBytes = item.bytes;
     item.bytes = 0;
     item.reason = `shares its disk blocks with ${sharedWith}`;
   }

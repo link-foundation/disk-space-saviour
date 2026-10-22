@@ -282,3 +282,48 @@ describe('sizes', () => {
     removeRoot(root);
   });
 });
+
+describe('git worktree folders', () => {
+  itUnless(sandboxed)(
+    'searches below them with the full depth again',
+    async () => {
+      const root = tempRoot('dss-worktrees-');
+      try {
+        const nested = (...parts) => join(root, 'org', 'repo', ...parts, 'js');
+        for (const project of [
+          nested('.worktrees', 'issue-1'),
+          nested('.claude', 'worktrees', 'agent-2'),
+          nested('plain', 'deeper'),
+        ]) {
+          writeFileSync(join(mkdirp(project), 'package.json'), '{}');
+          writeFileSync(join(project, 'package-lock.json'), '{}');
+          writeBlob(join(project, 'node_modules', 'pkg', 'index.js'));
+        }
+        age(root, 40 * DAY_MS);
+        const report = await scan(
+          scanInput(fixtureEnv(root), [root], {
+            scanners: ['projects'],
+            maxDepth: 4,
+          })
+        );
+        const found = report.items
+          .filter((item) => item.rule === 'node-modules')
+          .map((item) => item.path)
+          .sort();
+        expect(found).toEqual(
+          [
+            join(nested('.claude', 'worktrees', 'agent-2'), 'node_modules'),
+            join(nested('.worktrees', 'issue-1'), 'node_modules'),
+          ].sort()
+        );
+      } finally {
+        removeRoot(root);
+      }
+    }
+  );
+});
+
+function mkdirp(dir) {
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}

@@ -23,6 +23,7 @@ export {
   writeAudit,
 } from './audit.js';
 export { formatReport, formatAudit, formatDisk } from './report.js';
+export { usage, formatUsage } from './usage.js';
 export { runCli, parseCli, USAGE } from './cli.js';
 export { DEFAULTS, resolveOptions, resolveGoal } from './options.js';
 export {

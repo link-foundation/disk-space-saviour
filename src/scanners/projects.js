@@ -9,6 +9,9 @@ import { scanItems } from '../env/scope.js';
  * are present. Generic names (`build`, `lib`, `target`, `bin`) that fail
  * every rule are searched again below, with the remaining depth, so a
  * non-matching `build` directory never hides real projects inside it.
+ * Git worktree folders (`.worktrees`, `worktrees`, `.claude/worktrees`)
+ * hold whole checkouts, so the search below them starts with the full
+ * depth again: an agent's worktree deep in a project is a project too.
  *
  * Cargo `target` directories additionally yield `cargo-superseded` items:
  * older build hashes that a newer build of the same unit replaced (see
@@ -23,6 +26,7 @@ import { analyzeRustProfile, findRustProfiles } from './rust.js';
 import { timed } from '../timings.js';
 
 const ECOSYSTEM_NAMES = new Map(ECOSYSTEMS.map((e) => [e.id, e.name]));
+const WORKTREE_DIRS = ['.worktrees', 'worktrees'];
 
 function anyMatch(entries, globs) {
   return (entries ?? []).some((entry) =>
@@ -35,6 +39,13 @@ function depthBelow(env, roots, target) {
     .filter((candidate) => isWithin(target, candidate, env.path))
     .sort((a, b) => b.length - a.length)[0];
   return env.path.relative(root, target).split(/[\\/]/).filter(Boolean).length;
+}
+
+/** Depth left below a directory no rule claims; worktrees start afresh. */
+function remainingDepth(env, dirs, candidate, { depth, maxDepth }) {
+  return WORKTREE_DIRS.includes(candidate.name)
+    ? maxDepth
+    : depth - depthBelow(env, dirs, candidate.path);
 }
 
 function ruleAccepts(env, rule, candidate, selfListing, grandListing) {
@@ -139,7 +150,9 @@ async function indexedMatches(env, roots, globs, maxDepth, rules) {
 export async function findProjectDirs(env, roots, options = {}) {
   const rules = options.rules ?? PROJECT_RULES;
   const maxDepth = options.maxDepth ?? 6;
-  const globs = [...new Set(rules.flatMap((rule) => rule.names))];
+  const globs = [
+    ...new Set([...rules.flatMap((rule) => rule.names), ...WORKTREE_DIRS]),
+  ];
   const matches = [];
   const seen = new Set();
   const accept = (match) => {
@@ -171,7 +184,10 @@ export async function findProjectDirs(env, roots, options = {}) {
           }
           continue;
         }
-        const remaining = depth - depthBelow(env, dirs, match.candidate.path);
+        const remaining = remainingDepth(env, dirs, match.candidate, {
+          depth,
+          maxDepth,
+        });
         if (remaining > 0) {
           next.set(remaining, [
             ...(next.get(remaining) ?? []),

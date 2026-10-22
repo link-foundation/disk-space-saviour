@@ -57,6 +57,7 @@ dss scan [paths...] [--docker] [--depth N] [--json]      # report only
 dss clean [paths...] --tier safe|moderate [--yes] [--older-than 1h]
 dss emergency --free 20G | --until 80% [--path /] [--yes]
 dss docker scan|clean [--container ID] [--recursive]
+dss usage [paths...] [--min-size 1G] [--json]            # where space goes
 ```
 
 | Exit code | Meaning                                  |
@@ -85,6 +86,22 @@ Run `dss --help` for every option. The most useful ones:
   Recent reports authenticated by this installation are reused; older, unsigned
   or edited reports require discovery again. Changing discovery or action options
   also rebuilds the plan. Every deletion still gets fresh checks.
+- `dss usage` shows where the space of a whole volume goes, including data
+  no rule covers. One read-only `du -axk` pass walks the macOS Data volume
+  (`/Users`, `/Applications`, `/private`, `/opt`, ...) or `/` on Linux, or
+  the given paths, staying on their filesystem. It prints a tree of the
+  largest directories (1% of the walk and up, or `--min-size`), the largest
+  files, and for each directory what the latest dss scan or clean found
+  inside it (`[dss: 1.2 GiB freeable, 3.4 GiB blocked]`). On macOS it adds
+  the APFS volumes a walk cannot see (system, VM swap, Preboot, Recovery),
+  local snapshots and the part of the Data volume left unread. It needs
+  `du`, so it runs on macOS and Linux; a full walk takes minutes.
+- APFS clones that share every block with an installed app, such as Chrome's
+  code-sign clones, free nothing when deleted, so they are never offered. The
+  scan lists them under `SHARED WITH INSTALLED APPS` and `dss usage` marks
+  them, because `du` and Finder count them at full size.
+- Git worktree folders (`.worktrees`, `worktrees`) restart the project search
+  depth, so dependencies of nested worktrees are found below `--max-depth`.
 - `clean` automatically reuses a matching scan from the last 30 minutes.
   `--fresh` bypasses this plan and the discovery/size index; `--cache-dir DIR`
   chooses the state location (default `$XDG_STATE_HOME/disk-space-saviour`, or
@@ -149,6 +166,24 @@ is needed. Agent scratch cleanup requires inactivity and Git safety checks.
   cache, while `bun install`, `bunx` or an auto-installing script does.
   A directory on the `PATH` of a running process is kept too: the process
   may still start programs from it.
+- **Per-app macOS folders stay while their app runs.** Caches, containers
+  and other folders under `~/Library/<kind>/<bundle-id>` belong to the app
+  with that bundle identifier, read from the `Info.plist` of every bundle a
+  running process starts from. Such a folder is blocked while that app, a
+  helper or an updater of it runs (for example the WebKit cache of Music,
+  Telegram's group container), even when no rule names the app's process.
+  A path held open names its holder: `in use: <path> (pid N, App)`.
+- **Blocked space is grouped by what frees it.** A `WARNING:` line and the
+  `FREEABLE ON CONDITIONS` section total blocked space by the condition that
+  clears every blocker of an item: quit an app, a process or Claude Code
+  session ending, files closing, the activity window passing, a container
+  stopping or a later scan finishing what this one ran out of time for.
+  Items kept for Git state, protected installs or unverifiable records are
+  counted apart. `clean` repeats the summary after the plan. Rerun dss once
+  a condition is met; it rechecks everything before deleting. `clean` scans
+  again instead of reusing a saved scan when a process named by its blockers
+  has exited, and warns when the scan behind its plan stopped early (for
+  example at `--scan-budget`), since items it never reached are not planned.
 - **Toolchain versions are kept while anything may need them.** The
   manager's default and aliases, versions pinned by a project (`.nvmrc`,
   `rust-toolchain.toml`, ...) and the newest install stay. A partial nvm pin
