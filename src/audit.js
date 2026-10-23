@@ -101,7 +101,38 @@ export async function writeAudit(audit, options = {}) {
     dir,
     `dss-${audit.command}-${stamp}-${audit.pid}.json`
   );
-  await fsp.writeFile(file, `${JSON.stringify(audit, null, 2)}\n`);
+  // A write that fails half way (a full disk) leaves the previous record.
+  const partial = `${file}.${process.pid}.tmp`;
+  try {
+    await fsp.writeFile(partial, `${JSON.stringify(audit, null, 2)}\n`);
+    await fsp.rename(partial, file);
+  } catch (error) {
+    await fsp.rm(partial, { force: true }).catch(() => {});
+    throw error;
+  }
   audit.file = file;
   return file;
+}
+
+/** Errors meaning the disk is full, which is what cleaning fixes. */
+const NO_SPACE = new Set(['ENOSPC', 'EDQUOT']);
+
+/**
+ * Writes the record of a run that deletes. A full disk does not stop the
+ * run: the failure is kept in `audit.auditError`, and the next write, after
+ * deletions freed space, tries again.
+ * @returns {Promise<string|null>} the file, or null when the disk is full
+ */
+export async function recordAudit(audit, options = {}) {
+  try {
+    const file = await writeAudit(audit, options);
+    delete audit.auditError;
+    return file;
+  } catch (error) {
+    if (!NO_SPACE.has(error.code)) {
+      throw error;
+    }
+    audit.auditError = { message: error.message, code: error.code };
+    return null;
+  }
 }

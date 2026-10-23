@@ -238,7 +238,10 @@ is needed. Agent scratch cleanup requires inactivity and Git safety checks.
   include every candidate and its blockers; blocked candidates do not
   contribute to reclaimable tier totals.
   If a read-only scan cannot save its audit, it warns and still prints the
-  report. Root scans with another user's `HOME` use a private temporary audit
+  report. When the disk is full, `clean` and `emergency` delete anyway and
+  write their audit as soon as deletions free room; if it never fits, the
+  summary says `Audit log: not written (ENOSPC ...)`. Other audit failures,
+  such as an unusable `--audit-dir`, still stop them before deleting. Root scans with another user's `HOME` use a private temporary audit
   directory. Set `--audit-dir` to choose a persistent writable location.
 
 Long-lived `npm exec`/`npx` servers allow idle npm download and node-gyp
