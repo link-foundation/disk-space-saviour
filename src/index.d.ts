@@ -288,6 +288,8 @@ export interface AuditLog {
   plannedBytes: number;
   environments: Record<string, EnvironmentTotal>;
   file?: string;
+  /** Set while the disk was too full to write the log; deletion went on. */
+  auditError?: { message: string; code: string };
   goal?: { freeBytes: number | null; untilPercent: number | null };
   goalMet?: boolean;
   reachedTier?: Tier;

@@ -12,7 +12,7 @@
  * kept for investigation needs its own `removeContainers` entry.
  */
 
-import { startAudit, writeAudit, throwIfAborted } from './audit.js';
+import { recordAudit, startAudit, throwIfAborted } from './audit.js';
 import { Cleaner, cleanOrder, finishAudit, wantedItems } from './clean.js';
 import { LocalEnv } from './env/local.js';
 import { TIERS, selectByTier, tierRank } from './items.js';
@@ -120,7 +120,7 @@ export async function emergency(input = {}) {
         });
   audit.report = report;
   if (options.audit !== false) {
-    await writeAudit(audit, { ...options, inProgress: true });
+    await recordAudit(audit, { ...options, inProgress: true });
   }
   let disk = audit.diskAfter ?? diskBefore;
   if (report.aborted) {
@@ -145,7 +145,7 @@ async function escalate({ report, options, env, target, goal, audit }) {
       audit.entries.push(entry);
     }
     if (options.audit !== false) {
-      await writeAudit(audit, { ...options, inProgress: true });
+      await recordAudit(audit, { ...options, inProgress: true });
     }
   };
   const cleaner = new Cleaner(report, {
@@ -195,7 +195,7 @@ async function escalate({ report, options, env, target, goal, audit }) {
       }
       options.onEntry?.(entry, item);
       if (options.audit !== false) {
-        await writeAudit(audit, { ...options, inProgress: true });
+        await recordAudit(audit, { ...options, inProgress: true });
       }
       if (entry.status !== 'removed' && entry.status !== 'planned') {
         continue;

@@ -617,7 +617,9 @@ export function formatAudit(audit, options = {}) {
       ...conditionsSection(audit.blocked, options).slice(2)
     );
   }
-  if (audit.file) {
+  if (audit.auditError) {
+    lines.push(`Audit log: not written (${audit.auditError.message})`);
+  } else if (audit.file) {
     lines.push(`Audit log: ${audit.file}`);
   }
   return lines.join('\n');
