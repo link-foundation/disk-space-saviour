@@ -86,7 +86,10 @@ describe('project rules find their fixture project', () => {
         PROJECT_RULES.map((rule) => rule.id).sort()
       );
       for (const dir of dirs.values()) {
-        expect(existsSync(join(dir, 'payload.bin'))).toBe(true);
+        expect(
+          existsSync(join(dir, 'payload.bin')) ||
+            existsSync(join(dir, 'pkg', 'payload.bin'))
+        ).toBe(true);
       }
       removeRoot(root);
     }
@@ -320,6 +323,69 @@ describe('git worktree folders', () => {
         removeRoot(root);
       }
     }
+  );
+});
+
+describe('data kept inside node_modules', () => {
+  async function modulesFixture(callback) {
+    const root = tempRoot('dss-foreign-modules-');
+    const project = join(root, 'app');
+    const modules = join(project, 'node_modules');
+    writeFileSync(join(mkdirp(project), 'package.json'), '{}');
+    writeFileSync(join(project, 'package-lock.json'), '{}');
+    writeBlob(join(modules, 'pkg', 'index.js'));
+    writeFileSync(join(modules, 'pkg', 'package.json'), '{}');
+    writeBlob(join(modules, '@scope', 'lib', 'index.js'));
+    writeBlob(join(modules, '.bin', 'tool'));
+    writeBlob(join(modules, '.cache', 'babel', 'entry.json'));
+    writeFileSync(join(modules, '.package-lock.json'), '{}');
+    mkdirp(join(modules, 'empty-leftover'));
+    const env = fixtureEnv(root);
+    const input = scanInput(env, [root], { scanners: ['projects'] });
+    const itemOf = (report) =>
+      report.items.find((item) => item.path === modules);
+    try {
+      await callback({ root, env, input, modules, itemOf });
+    } finally {
+      removeRoot(root);
+    }
+  }
+
+  itUnless(sandboxed)(
+    'offers node_modules holding only what package managers install',
+    () =>
+      modulesFixture(async ({ root, input, itemOf }) => {
+        age(root, 40 * DAY_MS);
+        expect(itemOf(await scan(input)).blockers).toEqual([]);
+      })
+  );
+
+  itUnless(sandboxed)(
+    'keeps node_modules holding data a reinstall does not re-create',
+    () =>
+      modulesFixture(async ({ root, input, modules, itemOf }) => {
+        writeBlob(join(modules, '.issue-1-verification', 'run-1', 'log.json'));
+        age(root, 40 * DAY_MS);
+        const [blocker] = itemOf(await scan(input)).blockers;
+        expect(blocker).toMatch(
+          /^holds data no package manager installs: \.issue-1-verification \([\d.]+ KiB\); a reinstall does not re-create it/
+        );
+      })
+  );
+
+  itUnless(sandboxed)('checks for such data again before deleting', () =>
+    modulesFixture(async ({ root, env, input, modules, itemOf }) => {
+      age(root, 40 * DAY_MS);
+      const report = await scan(input);
+      expect(itemOf(report).blockers).toEqual([]);
+      writeBlob(join(modules, 'evidence', 'capture.bin'));
+      age(root, 40 * DAY_MS);
+      const audit = await clean(report, { env, tier: 'safe', audit: false });
+      const entry = audit.entries.find((e) => e.path === modules);
+      expect(entry.status).toBe('skipped');
+      expect(entry.reason).toMatch(/evidence \([\d.]+ KiB\)/);
+      expect(existsSync(join(modules, 'evidence', 'capture.bin'))).toBe(true);
+    })
   );
 });
 

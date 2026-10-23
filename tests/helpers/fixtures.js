@@ -60,6 +60,15 @@ export function writeBlob(file, bytes = 64 * 1024) {
 }
 
 /**
+ * Installs a fake package `name` in `modules` and returns its index.js.
+ */
+export function writePackage(modules, name, bytes = 64 * 1024) {
+  const index = writeBlob(join(modules, name, 'index.js'), bytes);
+  writeFileSync(join(modules, name, 'package.json'), '{}');
+  return index;
+}
+
+/**
  * Sets the access and modification time of `target` and everything below
  * it to `ageMs` ago.
  */
@@ -126,7 +135,13 @@ export function projectFixture(root, rule, bytes = 64 * 1024) {
   if (selfMarker) {
     writeFileSync(join(dir, selfMarker), '');
   }
-  writeBlob(join(dir, 'payload.bin'), bytes);
+  // node_modules holds packages; loose data there keeps it (see
+  // src/scanners/node-modules.js).
+  const holder = rule.id === 'node-modules' ? join(dir, 'pkg') : dir;
+  writeBlob(join(holder, 'payload.bin'), bytes);
+  if (holder !== dir) {
+    writeFileSync(join(holder, 'package.json'), '{}');
+  }
   return dir;
 }
 

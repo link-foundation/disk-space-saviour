@@ -22,6 +22,7 @@ import {
   scanInput,
   tempRoot,
   writeBlob,
+  writePackage,
 } from './helpers/fixtures.js';
 import { itUnless, notLinux, sandboxed } from './helpers/skip.js';
 
@@ -36,7 +37,7 @@ function repoWithModules(root) {
   git(repo, 'commit', '-q', '-m', 'package');
   git(repo, 'push', '-q');
   const modules = join(repo, 'node_modules');
-  writeBlob(join(modules, 'left-pad', 'index.js'));
+  writePackage(modules, 'left-pad');
   age(root, 40 * DAY_MS);
   return { repo, modules };
 }
@@ -143,7 +144,7 @@ describe('Git state', () => {
       git(repo, 'push', '-q');
       const { report } = await scanRepo(root);
       expect(report.items[0].blockers).toEqual([
-        `1 file inside ${join(repo, 'node_modules')} tracked by Git or not ignored`,
+        `2 files inside ${join(repo, 'node_modules')} tracked by Git or not ignored`,
       ]);
       removeRoot(root);
     }

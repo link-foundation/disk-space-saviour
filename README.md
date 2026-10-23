@@ -100,6 +100,11 @@ Run `dss --help` for every option. The most useful ones:
   code-sign clones, free nothing when deleted, so they are never offered. The
   scan lists them under `SHARED WITH INSTALLED APPS` and `dss usage` marks
   them, because `du` and Finder count them at full size.
+- `node_modules` counts as regenerable only while it holds what package
+  managers install: packages, `@scope` folders, `.bin`, lockfile copies and
+  tool caches such as `.cache` or `.vite`. Any other data kept there
+  (verification runs, captured evidence) blocks the whole directory, and the
+  check runs again right before deleting.
 - Git worktree folders (`.worktrees`, `worktrees`) restart the project search
   depth, so dependencies of nested worktrees are found below `--max-depth`.
 - `clean` automatically reuses a matching scan from the last 30 minutes.

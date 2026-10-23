@@ -23,6 +23,7 @@ import { block, makeItem } from '../items.js';
 import { isWithin, matchesGlob } from '../paths.js';
 import { listMany, scanTimeBusy } from './common.js';
 import { analyzeRustProfile, findRustProfiles } from './rust.js';
+import { foreignDataBlocker } from './node-modules.js';
 import { timed } from '../timings.js';
 
 const ECOSYSTEM_NAMES = new Map(ECOSYSTEMS.map((e) => [e.id, e.name]));
@@ -248,6 +249,14 @@ async function projectItem(context, { candidate, rule }, usage) {
     ...projectTier(rule),
     checks: { busy: rule.busy ?? [], cwd: project, mtime: true },
   });
+  if (rule.id === 'node-modules') {
+    block(
+      item,
+      await timed(context.timings, 'projects:contents', () =>
+        foreignDataBlocker(env, candidate.path)
+      )
+    );
+  }
   await addBlockers(context, item, false);
   return item;
 }
