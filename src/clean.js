@@ -45,6 +45,7 @@ import { isWithin } from './paths.js';
 import { OTHER_RULES } from './rules/other.js';
 import { compareVersions, VERSION_RULES } from './rules/versions.js';
 import { scanVersions } from './scanners/versions.js';
+import { foreignDataBlocker } from './scanners/node-modules.js';
 import { analyzeRustProfile } from './scanners/rust.js';
 import {
   filterItems,
@@ -446,6 +447,12 @@ export class Cleaner {
     const mount = await this.#bindMountBlocker(ctx, item, type);
     if (mount) {
       return mount;
+    }
+    if (item.rule === 'node-modules' && type === 'remove') {
+      const foreign = await foreignDataBlocker(ctx.env, item.path);
+      if (foreign) {
+        return foreign;
+      }
     }
     return this.#gitBlocker(ctx, item);
   }
