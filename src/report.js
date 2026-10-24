@@ -438,7 +438,8 @@ function holderLine(holder) {
       `${change > 0 ? '+' : '-'}${formatBytes(Math.abs(change))} since ${new Date(holder.growth.since).toISOString()}`
     );
   }
-  return `${holder.pid} ${holder.command}: ${details.join(', ')}`;
+  const self = holder.self ? ' (this dss run)' : '';
+  return `${holder.pid} ${holder.command}${self}: ${details.join(', ')}`;
 }
 
 function swapLines(swap) {

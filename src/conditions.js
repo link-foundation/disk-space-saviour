@@ -48,6 +48,13 @@ const CONDITIONS = [
     }),
   ],
   [
+    /^(?:busy: )?inside the scratchpad of Claude Code session (\S+) .*; kept until it is idle for (.+)$/,
+    (m) => ({
+      key: `session:${m[1]}`,
+      action: `the Claude Code session ${m[1]} stays idle for ${m[2]}`,
+    }),
+  ],
+  [
     /^scan incomplete: (.+)$/,
     (m) => ({
       key: 'rescan',

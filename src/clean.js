@@ -193,6 +193,7 @@ export class Cleaner {
         git: new GitInspector(env),
         liveness: new LivenessProbe(env, {
           staleAgeMs: this.options.staleAgeMs,
+          inactiveMs: this.options.inactiveMs,
           now: this.options.now,
         }),
       });

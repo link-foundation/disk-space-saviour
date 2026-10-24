@@ -151,6 +151,40 @@ describe('swap history', () => {
   );
 
   itUnless(readOnlyRuntime())(
+    'lists this dss run without asking to quit it',
+    async () => {
+      const root = tempRoot();
+      try {
+        const swap = await readSwap(
+          darwinEnv(14, [`${process.pid} node 4G 4G`, '7 codex 3G 3G']),
+          { stateDir: join(root, 'state'), now: NOW, disk: { free: 1 * GIB } }
+        );
+        expect(swap.holders.map((holder) => Boolean(holder.self))).toEqual([
+          true,
+          false,
+        ]);
+        expect(swap.warnings[1]).toMatch(/^Memory held by: codex \(pid 7\)/);
+        expect(swap.warnings.join('\n')).not.toContain(`pid ${process.pid}`);
+        const text = formatReport({
+          durationMs: 1,
+          environments: [{ label: 'host', swap }],
+          items: [],
+          errors: [],
+          totals: Object.fromEntries(
+            ['safe', 'moderate', 'aggressive', 'blocked'].map((tier) => [
+              tier,
+              { bytes: 0 },
+            ])
+          ),
+        });
+        expect(text).toContain(`${process.pid} node (this dss run): 4.0 GiB`);
+      } finally {
+        removeRoot(root);
+      }
+    }
+  );
+
+  itUnless(readOnlyRuntime())(
     'forgets samples older than a week and reads Linux /proc',
     async () => {
       const root = tempRoot();

@@ -173,6 +173,7 @@ export async function environmentContext(env, options, overrides = {}) {
   });
   const liveness = new LivenessProbe(env, {
     staleAgeMs: options.staleAgeMs,
+    inactiveMs: options.inactiveMs,
     now: options.now,
   });
   await liveness.refresh(true);

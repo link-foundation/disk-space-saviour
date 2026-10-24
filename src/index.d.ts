@@ -180,6 +180,8 @@ export interface EnvironmentDescriptor {
       swappedBytes?: number;
       /** Change since the earliest scan of the last week listing this process. */
       growth?: { since: number; memoryBytes: number };
+      /** The dss process itself, never named as one to quit. */
+      self?: boolean;
     }>;
     /** Change since the earliest scan of the last week. */
     growth?: { since: number; usedBytes: number } | null;

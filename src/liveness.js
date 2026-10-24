@@ -10,7 +10,9 @@
  * - a command argument names a path inside the item (including scripts
  *   whose interpreter has already closed its input descriptor);
  * - a directory inside the item is on a process's `PATH`, so the process
- *   may start a program from it at any time.
+ *   may start a program from it at any time;
+ * - the path lies in the scratchpad of a Claude Code session that was active
+ *   inside the inactive window, so the session may still rely on it.
  *
  * The cleaner refreshes the probe right before acting on each item.
  */
@@ -27,6 +29,32 @@ import { isWithin } from './paths.js';
 import { formatDuration } from './units.js';
 
 const PROC_COMM_LIMIT = 15;
+const DEFAULT_INACTIVE_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The Claude Code session directory a path lies in: Claude Code keeps each
+ * session's scratchpad under `<tmp>/claude-<uid>/<project>/<session id>`.
+ * @returns {{dir: string, project: string, id: string}|null}
+ */
+export function agentSessionOf(target, pathApi = path) {
+  const parts = target.split(/[\\/]/);
+  const index = parts.findIndex(
+    (part, at) =>
+      /^claude-\d+$/.test(part) &&
+      Boolean(parts[at + 1]) &&
+      SESSION_ID.test(parts[at + 2] ?? '')
+  );
+  if (index < 0) {
+    return null;
+  }
+  return {
+    dir: parts.slice(0, index + 3).join(pathApi.sep),
+    project: parts[index + 1],
+    id: parts[index + 2],
+  };
+}
 
 /** Bun subcommands that read or write the install cache. */
 const BUN_PACKAGE_COMMANDS = new Set([
@@ -210,11 +238,21 @@ function appLabel(proc, matched) {
 export class LivenessProbe {
   /**
    * @param {object} env environment adapter
-   * @param {{staleAgeMs: number, now?: () => number, refreshMs?: number}} options
+   * @param {{staleAgeMs: number, inactiveMs?: number, now?: () => number,
+   *   refreshMs?: number}} options
    */
-  constructor(env, { staleAgeMs, now = () => Date.now(), refreshMs = 2000 }) {
+  constructor(
+    env,
+    {
+      staleAgeMs,
+      inactiveMs = DEFAULT_INACTIVE_MS,
+      now = () => Date.now(),
+      refreshMs = 2000,
+    }
+  ) {
     this.env = env;
     this.staleAgeMs = staleAgeMs;
+    this.inactiveMs = inactiveMs;
     this.now = now;
     this.refreshMs = refreshMs;
     this.refreshedAt = -Infinity;
@@ -225,6 +263,7 @@ export class LivenessProbe {
     this.pathOwners = new Map();
     this.pathStats = new Map();
     this.inodes = new Map();
+    this.agentSessions = new Map();
     // Bundle identifiers never change, so they outlive refreshes.
     this.bundleIds = new Map();
   }
@@ -247,6 +286,7 @@ export class LivenessProbe {
     this.pathStats.clear();
     this.pathOwners.clear();
     this.inodes.clear();
+    this.agentSessions.clear();
   }
 
   /** Reads the identifiers of the app bundles running processes come from. */
@@ -393,6 +433,7 @@ export class LivenessProbe {
    * @param {string[]} paths
    */
   async resolve(paths) {
+    await this.#resolveAgentSessions(paths);
     if (this.env.unreadableProcesses?.length) {
       const missing = [
         ...new Set(
@@ -434,6 +475,72 @@ export class LivenessProbe {
     for (const target of missing) {
       this.realPaths.set(target, resolved.get(target) ?? null);
     }
+  }
+
+  /**
+   * When each Claude Code session holding one of the paths was last active:
+   * its transcript, its session directory and the entries two levels below.
+   */
+  async #resolveAgentSessions(paths) {
+    const pending = new Map();
+    for (const target of paths) {
+      const session = agentSessionOf(target, this.env.path);
+      if (session && !this.agentSessions.has(session.dir)) {
+        pending.set(session.dir, session);
+      }
+    }
+    if (pending.size === 0) {
+      return;
+    }
+    this.homes ??= (await this.env.homeDirs?.().catch(() => null)) ?? [];
+    for (const session of pending.values()) {
+      const children = await this.env.list(session.dir);
+      const grandchildren = await Promise.all(
+        children
+          .filter((entry) => entry.type === 'dir')
+          .map((entry) => this.env.list(entry.path))
+      );
+      const candidates = [
+        session.dir,
+        ...children.map((entry) => entry.path),
+        ...grandchildren.flat().map((entry) => entry.path),
+        ...this.homes.map((home) =>
+          this.env.path.join(
+            home,
+            '.claude',
+            'projects',
+            session.project,
+            `${session.id}.jsonl`
+          )
+        ),
+      ];
+      const stats = await Promise.all(
+        candidates.map((target) => this.env.stat?.(target))
+      );
+      const activeMs = Math.max(0, ...stats.map((stat) => stat?.mtimeMs ?? 0));
+      this.agentSessions.set(session.dir, { ...session, activeMs });
+    }
+  }
+
+  /** A path inside the scratchpad of a Claude Code session active recently. */
+  agentSessionUsage(paths) {
+    for (const target of paths) {
+      const session = this.agentSessions.get(
+        agentSessionOf(target, this.env.path)?.dir
+      );
+      if (!session) {
+        continue;
+      }
+      const age = this.now() - session.activeMs;
+      if (session.activeMs && age >= this.inactiveMs) {
+        continue;
+      }
+      const active = session.activeMs
+        ? `active ${formatDuration(Math.max(age, 0))} ago`
+        : 'activity unknown';
+      return `inside the scratchpad of Claude Code session ${session.id.slice(0, 8)} (${active}); kept until it is idle for ${formatDuration(this.inactiveMs)}`;
+    }
+    return null;
   }
 
   recentWrite(newestMtimeMs) {
@@ -611,16 +718,17 @@ export class LivenessProbe {
    */
   busyReason(item) {
     const checks = item.checks ?? {};
-    const paths = checks.perPath ? [] : (item.paths ?? []);
+    const all = item.paths ?? [];
     return (
-      this.installationBlocker(item.paths ?? []) ??
+      this.installationBlocker(all) ??
       this.probeBlocker() ??
       (checks.mtime === false ? null : this.recentWrite(item.newestMtimeMs)) ??
+      this.agentSessionUsage(all) ??
       this.runningTool(checks.busy, checks.cwd, item) ??
-      this.appUsage(item.paths ?? []) ??
-      this.processUsage(paths) ??
+      this.appUsage(all) ??
+      this.processUsage(checks.perPath ? [] : all) ??
       this.executableUsage(checks.executables) ??
-      this.uncertainUsage(item.paths ?? [])
+      this.uncertainUsage(all)
     );
   }
 

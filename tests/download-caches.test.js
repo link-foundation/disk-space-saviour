@@ -59,9 +59,16 @@ const homeLocations = [
     'crashpad-reports',
     `${support}/Google/Chrome/Crashpad/completed/report.dmp`,
   ],
+  ['crashpad-pending-reports', `${support}/Qoder/Crashpad/pending/report.dmp`],
+  ['gh-run-log-cache', '.cache/gh/run-log-35127502512-1789579189.zip'],
   ['chrome-http-caches', `${support}/Google/Chrome/extensions_crx_cache/x.crx`],
   ['vscode-caches', `${support}/Code/WebStorage/1/CacheStorage/x`],
 ];
+const MODERATE = new Set([
+  'crashpad-reports',
+  'crashpad-pending-reports',
+  'gh-run-log-cache',
+]);
 const tmpLocations = [
   [
     'chromium-code-sign-clones',
@@ -94,9 +101,7 @@ describe('application download rules', () => {
         const item = report.items.find((entry) => entry.rule === rule);
         expect(Boolean(item)).toBe(true);
         expect(item.blockers).toEqual([]);
-        expect(item.tier).toBe(
-          rule === 'crashpad-reports' ? 'moderate' : 'safe'
-        );
+        expect(item.tier).toBe(MODERATE.has(rule) ? 'moderate' : 'safe');
         if (item.checks.busy.length === 0) {
           return;
         }

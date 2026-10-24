@@ -260,8 +260,11 @@ export function swapWarnings(swap, disk) {
   if (reasons.length === 0) {
     return [];
   }
-  // The kernel (PID 0) cannot be quit, so naming it helps nobody.
-  const candidates = swap.holders.filter((holder) => holder.pid > 0);
+  // The kernel (PID 0) cannot be quit and this dss run ends by itself, so
+  // naming either helps nobody.
+  const candidates = swap.holders.filter(
+    (holder) => holder.pid > 0 && !holder.self
+  );
   const growing = candidates.filter(
     (holder) => holder.growth?.memoryBytes >= GROWTH_WARNING_BYTES
   );
@@ -308,6 +311,10 @@ export async function readSwap(env, options = {}) {
   if (!swap) {
     return null;
   }
+  // This dss run shows up among the holders while it scans; it ends on its own.
+  swap.holders = swap.holders.map((holder) =>
+    holder.pid === process.pid ? { ...holder, self: true } : holder
+  );
   const history = await loadSwapHistory(stateDir, now);
   const grown = withGrowth(swap, history);
   await saveSwapHistory(stateDir, [

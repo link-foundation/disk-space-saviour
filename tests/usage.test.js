@@ -13,6 +13,7 @@ import {
   canonicalItemPath,
   displayPath,
   formatUsage,
+  namePattern,
   parseApfsVolumes,
   scanCoverage,
   scanItems,
@@ -55,6 +56,29 @@ describe('usage walk', () => {
       '/r/a/big.bin',
       '/r/b/c/huge',
     ]);
+  });
+
+  it('sums small entries by name pattern per directory', () => {
+    expect(namePattern('ms-tg-creds-a1b2')).toBe('ms-*');
+    expect(namePattern('trace.zip')).toBe('trace.*');
+    expect(namePattern('0a1b2c.zip')).toBe('*.zip');
+    expect(namePattern('ab12cd')).toBe(null);
+    const collector = new UsageCollector({ minBytes: MiB });
+    const lines = [];
+    for (let index = 0; index < 12; index++) {
+      lines.push(du(100, `/r/T/ms-run-${index}/data`));
+      lines.push(du(100, `/r/T/ms-run-${index}`));
+    }
+    lines.push(du(5, '/r/T/other'), du(1205, '/r/T'), du(1205, '/r'));
+    for (const line of lines) {
+      collector.add(line);
+    }
+    const result = collector.result('/r');
+    expect(result.groups.get('/r/T')).toEqual([
+      { pattern: 'ms-*', bytes: 1200 * 1024, count: 12, below: MiB },
+    ]);
+    expect(result.groups.has('/r')).toBe(false);
+    expect(collector.open.size).toBe(0);
   });
 
   it('builds a tree of directories above the threshold, largest first', () => {
@@ -161,6 +185,31 @@ describe('APFS volumes', () => {
 });
 
 describe('usage end to end', () => {
+  itUnless(noPosixShell)(
+    'names what fills a directory of many small entries',
+    async () => {
+      const root = tempRoot('dss-usage-');
+      try {
+        for (let index = 0; index < 20; index++) {
+          const dir = path.join(root, 'T', `ms-run-${index}`);
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(path.join(dir, 'data'), Buffer.alloc(128 * 1024, 1));
+        }
+        const report = await usage({
+          roots: [root],
+          minSize: MiB,
+          platform: 'linux',
+          auditDir: path.join(root, 'no-audit'),
+        });
+        expect(formatUsage(report)).toMatch(
+          /T[\\/]ms-\* {2}\(20 entries, each under 1\.0 MiB\)/
+        );
+      } finally {
+        removeRoot(root);
+      }
+    }
+  );
+
   itUnless(noPosixShell)(
     'walks a directory with du and renders the tree and largest files',
     async () => {

@@ -184,4 +184,31 @@ export const DOWNLOAD_RULES = [
     ],
     minAge: 'stale',
   },
+  {
+    id: 'crashpad-pending-reports',
+    ecosystem: 'system',
+    description:
+      'Chromium and Electron app crash reports never sent: after a month no app uploads them',
+    tier: 'moderate',
+    aggregate: true,
+    paths: [
+      '~/Library/Application Support/*/Crashpad/pending/*',
+      ...['Google', 'Yandex', 'BraveSoftware'].map(
+        (vendor) =>
+          `~/Library/Application Support/${vendor}/*/Crashpad/pending/*`
+      ),
+      '~/.config/*/Crashpad/pending/*',
+    ],
+    minAge: 'inactive',
+  },
+  {
+    id: 'gh-run-log-cache',
+    ecosystem: 'system',
+    description:
+      'GitHub CLI cached workflow run logs: gh downloads them again while GitHub keeps them',
+    tier: 'moderate',
+    aggregate: true,
+    paths: ['~/.cache/gh/run-log-*.zip'],
+    minAge: 'stale',
+  },
 ];
