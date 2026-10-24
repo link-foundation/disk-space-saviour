@@ -438,7 +438,8 @@ function holderLine(holder) {
       `${change > 0 ? '+' : '-'}${formatBytes(Math.abs(change))} since ${new Date(holder.growth.since).toISOString()}`
     );
   }
-  return `${holder.pid} ${holder.command}: ${details.join(', ')}`;
+  const self = holder.self ? ' (this dss run)' : '';
+  return `${holder.pid} ${holder.command}${self}: ${details.join(', ')}`;
 }
 
 function swapLines(swap) {
@@ -617,7 +618,9 @@ export function formatAudit(audit, options = {}) {
       ...conditionsSection(audit.blocked, options).slice(2)
     );
   }
-  if (audit.file) {
+  if (audit.auditError) {
+    lines.push(`Audit log: not written (${audit.auditError.message})`);
+  } else if (audit.file) {
     lines.push(`Audit log: ${audit.file}`);
   }
   return lines.join('\n');

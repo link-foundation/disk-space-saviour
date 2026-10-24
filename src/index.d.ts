@@ -180,6 +180,8 @@ export interface EnvironmentDescriptor {
       swappedBytes?: number;
       /** Change since the earliest scan of the last week listing this process. */
       growth?: { since: number; memoryBytes: number };
+      /** The dss process itself, never named as one to quit. */
+      self?: boolean;
     }>;
     /** Change since the earliest scan of the last week. */
     growth?: { since: number; usedBytes: number } | null;
@@ -288,6 +290,8 @@ export interface AuditLog {
   plannedBytes: number;
   environments: Record<string, EnvironmentTotal>;
   file?: string;
+  /** Set while the disk was too full to write the log; deletion went on. */
+  auditError?: { message: string; code: string };
   goal?: { freeBytes: number | null; untilPercent: number | null };
   goalMet?: boolean;
   reachedTier?: Tier;

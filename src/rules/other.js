@@ -415,6 +415,15 @@ export const OTHER_RULES = [
     paths: ['~/Library/Logs/DiagnosticReports/*'],
   },
   {
+    id: 'rotated-app-logs',
+    ecosystem: 'system',
+    description:
+      'rotated app logs (warp.log.old.2, app.log.1): apps write only the current log',
+    tier: 'moderate',
+    paths: ['~/Library/Logs/*.log.*', '~/Library/Logs/*/*.log.*'],
+    minAge: 'stale',
+  },
+  {
     id: 'apt-archives',
     ecosystem: 'system',
     scope: 'system',

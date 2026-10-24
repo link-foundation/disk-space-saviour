@@ -94,12 +94,19 @@ Run `dss --help` for every option. The most useful ones:
   files, and for each directory what the latest dss scan or clean found
   inside it (`[dss: 1.2 GiB freeable, 3.4 GiB blocked]`). On macOS it adds
   the APFS volumes a walk cannot see (system, VM swap, Preboot, Recovery),
-  local snapshots and the part of the Data volume left unread. It needs
-  `du`, so it runs on macOS and Linux; a full walk takes minutes.
+  local snapshots and the part of the Data volume left unread. A directory
+  filled by many small entries names what fills it by pattern
+  (`T/ms-*  (68523 entries, each under 64 MiB)`). It needs `du`, so it runs
+  on macOS and Linux; a full walk takes minutes.
 - APFS clones that share every block with an installed app, such as Chrome's
   code-sign clones, free nothing when deleted, so they are never offered. The
   scan lists them under `SHARED WITH INSTALLED APPS` and `dss usage` marks
   them, because `du` and Finder count them at full size.
+- `node_modules` counts as regenerable only while it holds what package
+  managers install: packages, `@scope` folders, `.bin`, lockfile copies and
+  tool caches such as `.cache` or `.vite`. Any other data kept there
+  (verification runs, captured evidence) blocks the whole directory, and the
+  check runs again right before deleting.
 - Git worktree folders (`.worktrees`, `worktrees`) restart the project search
   depth, so dependencies of nested worktrees are found below `--max-depth`.
 - `clean` automatically reuses a matching scan from the last 30 minutes.
@@ -139,7 +146,9 @@ their blocks with the installed app), Chromium on-device AI models
 Electron and electron-builder archives, the Bun transpiler cache, Docker
 Desktop and Warp staged updates (kept while the app runs), Zed language
 servers, tree-sitter toolchains, Codex plugin staging, the Clang module cache
-and processed Crashpad reports. Telegram pure caches, Safari/WebKit,
+Crashpad reports (processed ones, and unsent ones after 30 days), rotated app
+logs in `~/Library/Logs` (`warp.log.old.2`) and the GitHub CLI run-log cache.
+Telegram pure caches, Safari/WebKit,
 Chromium code/GPU/Dawn/service-worker caches and marker-validated Electron
 caches are included. Old Playwright browser revisions are kept while a
 Playwright package recorded in the registry's `.links` still launches them or
@@ -148,6 +157,10 @@ directories are removed once untouched. Telegram caches are removed only
 while Telegram is not running. Telegram databases, browser profiles and
 Playwright MCP profiles are preserved. macOS access failures explain when Full Disk Access
 is needed. Agent scratch cleanup requires inactivity and Git safety checks.
+Anything inside a Claude Code session scratchpad
+(`{TMP}/claude-<uid>/<project>/<session>`) is kept until the session and its
+transcript in `~/.claude/projects` stay untouched for the inactive window
+(30 days), checked again right before deletion.
 
 ## Safety
 
@@ -233,7 +246,10 @@ is needed. Agent scratch cleanup requires inactivity and Git safety checks.
   include every candidate and its blockers; blocked candidates do not
   contribute to reclaimable tier totals.
   If a read-only scan cannot save its audit, it warns and still prints the
-  report. Root scans with another user's `HOME` use a private temporary audit
+  report. When the disk is full, `clean` and `emergency` delete anyway and
+  write their audit as soon as deletions free room; if it never fits, the
+  summary says `Audit log: not written (ENOSPC ...)`. Other audit failures,
+  such as an unusable `--audit-dir`, still stop them before deleting. Root scans with another user's `HOME` use a private temporary audit
   directory. Set `--audit-dir` to choose a persistent writable location.
 
 Long-lived `npm exec`/`npx` servers allow idle npm download and node-gyp
@@ -290,7 +306,8 @@ Each scan records swap usage and its largest holders in the state directory, so
 the next scan shows how much both grew during the last week. A `WARNING:` line
 appears when swap grew by 1 GiB or more, is at least 75% full, or exceeds the free
 disk space it can grow into, naming the processes holding the memory and their
-growth. Long-running AI agent sessions keep their history in memory: quitting and
+growth. The dss run itself is listed as `(this dss run)` and never named as a
+process to quit. Long-running AI agent sessions keep their history in memory: quitting and
 resuming them (`codex resume <session-id>`, `claude --resume`) releases it. When
 Docker Desktop consumes memory, saving work and restarting it or lowering its VM
 memory limit can help. dss never deletes swap files.

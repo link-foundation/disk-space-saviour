@@ -22,6 +22,7 @@ import {
   scanInput,
   tempRoot,
   writeBlob,
+  writePackage,
 } from './helpers/fixtures.js';
 import { itUnless, sandboxed } from './helpers/skip.js';
 
@@ -68,7 +69,7 @@ function volume() {
     ['recent', 2048 * KIB],
   ]) {
     const project = join(root, 'projects', name);
-    writeBlob(join(project, 'node_modules', 'dep', 'index.js'), bytes);
+    writePackage(join(project, 'node_modules'), 'dep', bytes);
     writeFileSync(join(project, 'package.json'), '{}');
     writeFileSync(join(project, 'package-lock.json'), '{}');
     paths[name] = join(project, 'node_modules');

@@ -17,7 +17,7 @@ import { createWriteStream, promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { finished } from 'node:stream/promises';
 
-import { backupDirectory, startAudit, writeAudit } from './audit.js';
+import { backupDirectory, recordAudit, startAudit } from './audit.js';
 import { PhaseTimer } from './timings.js';
 import { configureContainerHost } from './docker/writable.js';
 import { DockerCli, assertAllowed, parseDockerSize } from './docker/cli.js';
@@ -45,6 +45,7 @@ import { isWithin } from './paths.js';
 import { OTHER_RULES } from './rules/other.js';
 import { compareVersions, VERSION_RULES } from './rules/versions.js';
 import { scanVersions } from './scanners/versions.js';
+import { foreignDataBlocker } from './scanners/node-modules.js';
 import { analyzeRustProfile } from './scanners/rust.js';
 import {
   filterItems,
@@ -192,6 +193,7 @@ export class Cleaner {
         git: new GitInspector(env),
         liveness: new LivenessProbe(env, {
           staleAgeMs: this.options.staleAgeMs,
+          inactiveMs: this.options.inactiveMs,
           now: this.options.now,
         }),
       });
@@ -446,6 +448,12 @@ export class Cleaner {
     const mount = await this.#bindMountBlocker(ctx, item, type);
     if (mount) {
       return mount;
+    }
+    if (item.rule === 'node-modules' && type === 'remove') {
+      const foreign = await foreignDataBlocker(ctx.env, item.path);
+      if (foreign) {
+        return foreign;
+      }
     }
     return this.#gitBlocker(ctx, item);
   }
@@ -959,7 +967,7 @@ export async function clean(report, input = {}) {
     }
     if (options.audit !== false) {
       await timings.measure('audit-write', () =>
-        writeAudit(audit, { ...options, inProgress: true })
+        recordAudit(audit, { ...options, inProgress: true })
       );
     }
   };
@@ -971,7 +979,7 @@ export async function clean(report, input = {}) {
   audit.health = cleaner.health.records;
   audit.timings = timings;
   if (options.audit !== false) {
-    await writeAudit(audit, { ...options, inProgress: true });
+    await recordAudit(audit, { ...options, inProgress: true });
   }
   try {
     const done = new Set(audit.entries.map((entry) => entry.id));
@@ -988,7 +996,7 @@ export async function clean(report, input = {}) {
       options.onEntry?.(entry, item);
       if (options.audit !== false) {
         await timings.measure('audit-write', () =>
-          writeAudit(audit, { ...options, inProgress: true })
+          recordAudit(audit, { ...options, inProgress: true })
         );
       }
     }
@@ -1025,7 +1033,7 @@ export async function finishAudit(audit, report, options) {
     )
     .map((env) => ({ label: env.label, status: env.scanStatus }));
   if (options.audit !== false) {
-    await writeAudit(audit, options);
+    await recordAudit(audit, options);
   }
   return audit;
 }

@@ -26,6 +26,22 @@ import { formatBytes } from './units.js';
 
 const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
+const GROUP_PATTERNS = 64;
+const GROUP_MIN_ENTRIES = 10;
+
+/**
+ * The name pattern an entry is grouped under: its leading word and the
+ * separator after it (`ms-tg-creds-a1b2` is `ms-*`), else its extension
+ * (`trace.zip` is `*.zip`), else null.
+ */
+export function namePattern(name) {
+  const word = /^[A-Za-z][A-Za-z0-9]*[-_.]/.exec(name);
+  if (word && word[0].length < name.length) {
+    return `${word[0]}*`;
+  }
+  const extension = /\.[A-Za-z0-9]{1,8}$/.exec(name);
+  return extension ? `*${extension[0]}` : null;
+}
 const DATA_VOLUME = '/System/Volumes/Data';
 const DENIED = /^du: (.+): (Permission denied|Operation not permitted)$/;
 
@@ -52,6 +68,10 @@ export class UsageCollector {
     this.entries = 0;
     this.previous = null;
     this.last = null;
+    // Small entries summed by name pattern, per directory still being
+    // listed, so a directory of many small entries can say what fills it.
+    this.open = new Map();
+    this.groups = new Map();
   }
 
   add(line) {
@@ -64,7 +84,11 @@ export class UsageCollector {
     const isDir = this.previous?.startsWith(prefix) ?? false;
     this.previous = entry.path;
     this.last = entry;
+    if (isDir) {
+      this.#closeDir(entry);
+    }
     if (entry.bytes < this.minBytes) {
+      this.#group(entry);
       return;
     }
     if (isDir) {
@@ -74,6 +98,45 @@ export class UsageCollector {
       if (this.files.length > this.topFiles * 4) {
         this.#trimFiles();
       }
+    }
+  }
+
+  #group(entry) {
+    const slash = entry.path.lastIndexOf('/');
+    const pattern = namePattern(entry.path.slice(slash + 1));
+    if (slash <= 0 || !pattern) {
+      return;
+    }
+    const parent = entry.path.slice(0, slash);
+    const groups = this.open.get(parent) ?? new Map();
+    this.open.set(parent, groups);
+    const group = groups.get(pattern);
+    if (group) {
+      group.bytes += entry.bytes;
+      group.count += 1;
+    } else if (groups.size < GROUP_PATTERNS) {
+      groups.set(pattern, { pattern, bytes: entry.bytes, count: 1 });
+    }
+  }
+
+  /** `du` lists a directory after everything inside it. */
+  #closeDir(entry) {
+    const groups = this.open.get(entry.path);
+    if (!groups) {
+      return;
+    }
+    this.open.delete(entry.path);
+    const kept = [...groups.values()].filter(
+      (group) =>
+        group.bytes >= this.minBytes && group.count >= GROUP_MIN_ENTRIES
+    );
+    if (entry.bytes >= this.minBytes && kept.length > 0) {
+      this.groups.set(
+        entry.path,
+        kept
+          .sort((a, b) => b.bytes - a.bytes)
+          .map((group) => ({ ...group, below: this.minBytes }))
+      );
     }
   }
 
@@ -93,6 +156,7 @@ export class UsageCollector {
       entries: this.entries,
       dirs: this.dirs,
       files: this.files,
+      groups: this.groups,
     };
   }
 }
@@ -417,9 +481,13 @@ function rootReport(result, items, options) {
     [...result.dirs].map(([dir, bytes]) => [show(dir), bytes])
   );
   const rootPath = show(result.root);
+  const groups = new Map(
+    [...(result.groups ?? [])].map(([dir, list]) => [show(dir), list])
+  );
   const annotate = (node) => ({
     ...node,
     dss: summary(scanCoverage(node.path, items)),
+    groups: smallEntries(node, groups.get(node.path), minBytes),
     children: node.children.map(annotate),
   });
   const inside = items.filter((item) =>
@@ -456,6 +524,18 @@ function rootReport(result, items, options) {
       dss: summary(scanCoverage(show(file.path), items)),
     })),
   };
+}
+
+/**
+ * Groups of small entries worth naming in `node`: those as large as a
+ * shown directory, when the shown subdirectories leave much of it unnamed.
+ */
+function smallEntries(node, groups, minBytes) {
+  const named = node.children.reduce((sum, child) => sum + child.bytes, 0);
+  if (!groups || named >= node.bytes * 0.5) {
+    return [];
+  }
+  return groups.filter((group) => group.bytes >= minBytes).slice(0, 5);
 }
 
 function summary(coverage) {
@@ -517,9 +597,15 @@ function treeLines(node, depth = 0) {
   ) {
     return treeLines(only, depth);
   }
+  const indent = '  '.repeat(depth + 1);
+  const separator = node.path.endsWith('/') ? '' : '/';
   return [
     `${formatBytes(node.bytes).padStart(10)}  ${'  '.repeat(depth)}${node.path}${dssNote(node.dss)}`,
     ...node.children.flatMap((child) => treeLines(child, depth + 1)),
+    ...(node.groups ?? []).map(
+      (group) =>
+        `${formatBytes(group.bytes).padStart(10)}  ${indent}${node.path}${separator}${group.pattern}  (${group.count.toLocaleString('en-US')} entries, each under ${formatBytes(group.below)})`
+    ),
   ];
 }
 

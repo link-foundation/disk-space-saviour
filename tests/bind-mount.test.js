@@ -13,7 +13,7 @@ import {
   removeRoot,
   scanInput,
   tempRoot,
-  writeBlob,
+  writePackage,
 } from './helpers/fixtures.js';
 import { itUnless, sandboxed } from './helpers/skip.js';
 
@@ -30,9 +30,7 @@ describe('running Docker bind mounts', () => {
       const root = tempRoot('dss-bind-mount-');
       try {
         const project = join(root, 'app');
-        const moduleFile = writeBlob(
-          join(project, 'node_modules', 'pkg', 'index.js')
-        );
+        const moduleFile = writePackage(join(project, 'node_modules'), 'pkg');
         writeFileSync(join(project, 'package.json'), '{}');
         writeFileSync(join(project, 'package-lock.json'), '{}');
         age(root, 40 * DAY_MS);
