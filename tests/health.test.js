@@ -30,7 +30,7 @@ import {
   removeRoot,
   scanInput,
   tempRoot,
-  writeBlob,
+  writePackage,
 } from './helpers/fixtures.js';
 import { itUnless, notLinux, sandboxed } from './helpers/skip.js';
 
@@ -150,7 +150,7 @@ describe('health watch', () => {
 function nodeProject(root, name) {
   const project = join(root, name);
   const modules = join(project, 'node_modules');
-  writeBlob(join(modules, 'dep', 'index.js'));
+  writePackage(modules, 'dep');
   writeFileSync(join(project, 'package.json'), '{}');
   writeFileSync(join(project, 'package-lock.json'), '{}');
   age(project, 40 * DAY_MS);
