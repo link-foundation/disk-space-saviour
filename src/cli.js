@@ -13,6 +13,7 @@ import { parseArgs } from 'node:util';
 
 import { startAudit, writeAudit } from './audit.js';
 import { clean } from './clean.js';
+import { runApps } from './mac-apps.js';
 import { exitedBlockerPids, pidAlive } from './conditions.js';
 import { emergency } from './emergency.js';
 import { setTrace } from './exec.js';
@@ -34,6 +35,8 @@ Commands:
                              largest directories and files, what dss can
                              free inside them, APFS volumes (never deletes)
   docker scan|clean          Only Docker: daemons, containers, nested daemons
+  apps remove APP.app       Move explicitly selected macOS apps to Trash
+  apps leftovers            Report possible app leftovers (read-only)
   help, version
 
 Scope:
@@ -539,6 +542,9 @@ function dispatch(cli, command, options, values) {
 export async function runCli(argv, deps = {}) {
   const io = deps.io ?? processIo();
   try {
+    if (argv[0] === 'apps') {
+      return await runApps(argv.slice(1), io, deps.signal);
+    }
     const { command, paths, values } = parseCli(argv);
     if (command === 'help') {
       io.stdout(USAGE);

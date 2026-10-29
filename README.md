@@ -776,3 +776,25 @@ Quick steps:
 ## License
 
 [Unlicense](LICENSE) - Public Domain
+
+### Explicit macOS app removal and leftovers
+
+`dss apps remove "/Users/me/Applications/Example.app"` previews removal;
+`--yes` moves only that bundle to the macOS Trash. It never empties Trash or
+removes support data. App identity and process activity are checked before
+removal; symlinked paths, nested app components and App Store receipts are
+refused. Use a vendor uninstaller first when one exists.
+
+Chrome web apps should first be uninstalled using `chrome://apps`.
+`--launcher-only` explicitly allows moving their launcher bundles to Trash;
+it preserves Chrome's app registration, cookies, profiles and website data,
+so Chrome may recreate the launcher. The command is separate from automatic
+cache cleanup. Removed URL handlers may be recreated by their owning tool.
+
+`dss apps leftovers` reports possible leftover Library files, including logs.
+An absent bundle in standard application folders is only a clue: apps can live
+elsewhere, and helpers or other apps can share data. Caches and logs are marked
+`disposable-after-activity-check`; settings, application support, containers,
+and saved state require a user decision. Every candidate remains read-only,
+including disposable candidates. No leftover is safe to delete unconditionally;
+logs may be needed for investigation. Inventory errors appear in the report.
