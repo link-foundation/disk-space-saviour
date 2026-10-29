@@ -7,6 +7,11 @@ source models, platform scope and unmeasured comparison fields. No competitor
 was installed or run against this user's files. Prices, popularity and marketing
 speed claims are deliberately excluded. Websites can change after this date.
 
+See the extensive [platform-specific feature tables](platform-feature-comparison.md)
+for Linux, macOS and five other Unix targets, including separate per-platform
+capability and interface tables. [Platform feature data](platform-feature-matrix.json)
+is machine-readable and keeps unknowns distinct from unsupported scope.
+
 ## Delivery state and implemented detection
 
 The implementation contains these mechanisms; their presence alone does not

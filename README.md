@@ -798,3 +798,11 @@ elsewhere, and helpers or other apps can share data. Caches and logs are marked
 and saved state require a user decision. Every candidate remains read-only,
 including disposable candidates. No leftover is safe to delete unconditionally;
 logs may be needed for investigation. Inventory errors appear in the report.
+
+### Platform-specific competitor comparison
+
+See the [feature comparison tables](docs/research/platform-feature-comparison.md)
+for dss and 30 competitors across Linux, macOS, FreeBSD, OpenBSD, NetBSD,
+illumos and AIX. Capability, interface and safety-backend tables distinguish
+implemented features, vendor documentation, partial coverage and unknowns.
+The comparison is a sourced inventory, not a performance or superiority claim.

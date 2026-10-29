@@ -85,7 +85,7 @@
     {
       "name": "Czkawka / Krokiet",
       "source_model": "open-source",
-      "platform_scope": "Linux; macOS; Windows; other ports vary",
+      "platform_scope": "Linux; macOS; Windows; FreeBSD project claim; frontend/binary support varies",
       "category": "duplicates and media",
       "documented_capabilities": "Duplicate files and similar images, videos and music",
       "source_url": "https://github.com/qarmin/czkawka",
@@ -163,7 +163,7 @@
     {
       "name": "gdu",
       "source_model": "open-source",
-      "platform_scope": "Platform builds require verification",
+      "platform_scope": "Linux documented; other platform builds require verification",
       "category": "disk analysis",
       "documented_capabilities": "Parallel disk usage analysis and console navigation",
       "source_url": "https://github.com/dundee/gdu",
@@ -176,7 +176,7 @@
     {
       "name": "dua-cli",
       "source_model": "open-source",
-      "platform_scope": "Platform builds require verification",
+      "platform_scope": "Linux; macOS; NetBSD documented; other Unix builds require verification",
       "category": "disk analysis",
       "documented_capabilities": "Disk usage navigation and selected deletion",
       "source_url": "https://github.com/Byron/dua-cli",
@@ -189,7 +189,7 @@
     {
       "name": "dust",
       "source_model": "open-source",
-      "platform_scope": "Platform builds require verification",
+      "platform_scope": "Linux; macOS; Windows documented",
       "category": "disk analysis",
       "documented_capabilities": "Readable terminal disk usage presentation",
       "source_url": "https://github.com/bootandy/dust",
@@ -394,5 +394,7 @@
       "safety_comparison": "unknown",
       "performance_comparison": "unmeasured"
     }
-  ]
+  ],
+  "feature_comparison": "platform-feature-comparison.md",
+  "platform_feature_data": "platform-feature-matrix.json"
 }

@@ -1,0 +1,1176 @@
+{
+  "checked_at": "2026-10-30",
+  "platforms": [
+    "linux",
+    "macos",
+    "freebsd",
+    "openbsd",
+    "netbsd",
+    "illumos",
+    "aix"
+  ],
+  "feature_keys": [
+    "disk_analysis",
+    "cache_cleanup",
+    "developer_artifacts",
+    "duplicate_files",
+    "similar_media",
+    "app_removal",
+    "leftover_search",
+    "cli",
+    "native_gui",
+    "preview",
+    "operation_audit",
+    "structured_export"
+  ],
+  "legend": {
+    "I": "dss implementation inspected; not a comparative benchmark",
+    "D": "first-party documentation for the platform scope; not independently tested",
+    "P": "partial/qualified implementation or documented capability; read row notes",
+    "G": "generic POSIX/Unix portability claim; exact OS build not validated",
+    "C": "capability documented generally but platform support is qualified or unverified",
+    "U": "unknown/not established by reviewed evidence",
+    "N": "outside the reviewed product/platform scope; not a failure",
+    "0": "explicitly not implemented for dss on this platform"
+  },
+  "defaults": {
+    "unlisted_feature": "U",
+    "competitor_hands_on_tested": false,
+    "performance": "unmeasured"
+  },
+  "products": [
+    {
+      "name": "dss",
+      "source_url": "../../README.md",
+      "platform_support": {
+        "linux": "I",
+        "macos": "I",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "disk_analysis": "I",
+          "cache_cleanup": "I",
+          "developer_artifacts": "I",
+          "cli": "I",
+          "preview": "I",
+          "operation_audit": "I",
+          "structured_export": "I",
+          "duplicate_files": "0",
+          "similar_media": "0",
+          "native_gui": "P",
+          "app_removal": "0",
+          "leftover_search": "0"
+        },
+        "macos": {
+          "disk_analysis": "I",
+          "cache_cleanup": "I",
+          "developer_artifacts": "I",
+          "cli": "I",
+          "preview": "I",
+          "operation_audit": "I",
+          "structured_export": "I",
+          "duplicate_files": "0",
+          "similar_media": "0",
+          "native_gui": "P",
+          "app_removal": "P",
+          "leftover_search": "P"
+        }
+      },
+      "notes": "Implemented Linux/macOS features; BSD/Unix ports are unvalidated. Example GUI is not a production native manager."
+    },
+    {
+      "name": "BleachBit",
+      "source_url": "https://www.bleachbit.org/features",
+      "platform_support": {
+        "linux": "D",
+        "macos": "N",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "linux": {
+          "cache_cleanup": "D",
+          "cli": "D",
+          "native_gui": "D",
+          "preview": "D"
+        }
+      },
+      "notes": "Linux cleaners vary; winapp2 imports are Windows-only and excluded here."
+    },
+    {
+      "name": "Mole CLI",
+      "source_url": "https://github.com/tw93/Mole",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "disk_analysis": "D",
+          "cache_cleanup": "D",
+          "developer_artifacts": "D",
+          "app_removal": "D",
+          "leftover_search": "D",
+          "cli": "D",
+          "preview": "D",
+          "operation_audit": "D",
+          "structured_export": "D"
+        }
+      },
+      "notes": "macOS CLI only in this matrix; Windows branch is a separate scope. Audit JSON is operation history, not a filesystem inventory."
+    },
+    {
+      "name": "Mole native",
+      "source_url": "https://mole.fit/",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "disk_analysis": "D",
+          "cache_cleanup": "D",
+          "app_removal": "D",
+          "leftover_search": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "developer_artifacts": "P"
+        }
+      },
+      "notes": "Separate proprietary native product; do not import CLI features into this row."
+    },
+    {
+      "name": "Kondo",
+      "source_url": "https://github.com/tbillington/kondo",
+      "platform_support": {
+        "linux": "D",
+        "macos": "D",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "developer_artifacts": "D",
+          "cli": "D",
+          "preview": "D",
+          "native_gui": "D"
+        },
+        "macos": {
+          "developer_artifacts": "D",
+          "cli": "D",
+          "preview": "D"
+        },
+        "freebsd": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "openbsd": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "netbsd": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "illumos": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "aix": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        }
+      },
+      "notes": "Prompted project cleanup; Linux GUI documented separately. macOS GUI is not established here."
+    },
+    {
+      "name": "npkill",
+      "source_url": "https://github.com/voidcosmos/npkill",
+      "platform_support": {
+        "linux": "U",
+        "macos": "U",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "macos": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "freebsd": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "openbsd": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "netbsd": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "illumos": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "aix": {
+          "developer_artifacts": "C",
+          "cli": "C",
+          "preview": "C"
+        }
+      },
+      "notes": "Node.js/runtime portability does not establish tested OS builds; feature descriptions are conditional on a working port."
+    },
+    {
+      "name": "Pearcleaner",
+      "source_url": "https://github.com/aurochseth/pearcleaner",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "app_removal": "D",
+          "leftover_search": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "developer_artifacts": "P",
+          "cache_cleanup": "P"
+        }
+      },
+      "notes": "Source-available/fair-code; environment management is not proof of every artifact-cleaning rule."
+    },
+    {
+      "name": "Czkawka / Krokiet",
+      "source_url": "https://github.com/qarmin/czkawka",
+      "platform_support": {
+        "linux": "D",
+        "macos": "D",
+        "freebsd": "D",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "duplicate_files": "D",
+          "similar_media": "D",
+          "cli": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "disk_analysis": "P",
+          "cache_cleanup": "P"
+        },
+        "macos": {
+          "duplicate_files": "D",
+          "similar_media": "D",
+          "cli": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "disk_analysis": "P",
+          "cache_cleanup": "P"
+        },
+        "freebsd": {
+          "duplicate_files": "D",
+          "similar_media": "D",
+          "cli": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "disk_analysis": "P",
+          "cache_cleanup": "P"
+        },
+        "openbsd": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "cli": "C",
+          "native_gui": "C",
+          "preview": "C",
+          "disk_analysis": "C",
+          "cache_cleanup": "C"
+        },
+        "netbsd": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "cli": "C",
+          "native_gui": "C",
+          "preview": "C",
+          "disk_analysis": "C",
+          "cache_cleanup": "C"
+        },
+        "illumos": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "cli": "C",
+          "native_gui": "C",
+          "preview": "C",
+          "disk_analysis": "C",
+          "cache_cleanup": "C"
+        },
+        "aix": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "cli": "C",
+          "native_gui": "C",
+          "preview": "C",
+          "disk_analysis": "C",
+          "cache_cleanup": "C"
+        }
+      },
+      "notes": "FreeBSD is project-documented; frontend binaries, codec support and versions differ. Big-file finder is narrower than a full usage tree; temporary-file finder is narrower than app-cache rules."
+    },
+    {
+      "name": "rmlint",
+      "source_url": "https://github.com/sahib/rmlint",
+      "platform_support": {
+        "linux": "D",
+        "macos": "U",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "duplicate_files": "D",
+          "cli": "D",
+          "structured_export": "D"
+        },
+        "macos": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "structured_export": "C"
+        },
+        "freebsd": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "structured_export": "C"
+        },
+        "openbsd": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "structured_export": "C"
+        },
+        "netbsd": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "structured_export": "C"
+        },
+        "illumos": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "structured_export": "C"
+        },
+        "aix": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "structured_export": "C"
+        }
+      },
+      "notes": "Generated JSON/shell plans are not deletion audit history. Specific non-Linux builds require verification."
+    },
+    {
+      "name": "fclones",
+      "source_url": "https://github.com/pkolaczk/fclones",
+      "platform_support": {
+        "linux": "D",
+        "macos": "P",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "duplicate_files": "D",
+          "cli": "D",
+          "preview": "D"
+        },
+        "macos": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "freebsd": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "openbsd": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "netbsd": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "illumos": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "aix": {
+          "duplicate_files": "C",
+          "cli": "C",
+          "preview": "C"
+        }
+      },
+      "notes": "Linux optimizations are not all available on macOS; macOS installation is documented but testing coverage is qualified by the project."
+    },
+    {
+      "name": "fdupes",
+      "source_url": "https://github.com/adrianlopezroche/fdupes",
+      "platform_support": {
+        "linux": "U",
+        "macos": "U",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "duplicate_files": "C",
+          "cli": "C"
+        },
+        "macos": {
+          "duplicate_files": "C",
+          "cli": "C"
+        },
+        "freebsd": {
+          "duplicate_files": "C",
+          "cli": "C"
+        },
+        "openbsd": {
+          "duplicate_files": "C",
+          "cli": "C"
+        },
+        "netbsd": {
+          "duplicate_files": "C",
+          "cli": "C"
+        },
+        "illumos": {
+          "duplicate_files": "C",
+          "cli": "C"
+        },
+        "aix": {
+          "duplicate_files": "C",
+          "cli": "C"
+        }
+      },
+      "notes": "Unix-oriented source; per-OS builds and exact deletion confirmation flags are not verified here."
+    },
+    {
+      "name": "dupeGuru",
+      "source_url": "https://dupeguru.voltaicideas.net/",
+      "platform_support": {
+        "linux": "D",
+        "macos": "D",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "duplicate_files": "D",
+          "similar_media": "D",
+          "native_gui": "D",
+          "preview": "D"
+        },
+        "macos": {
+          "duplicate_files": "D",
+          "similar_media": "D",
+          "native_gui": "D",
+          "preview": "D"
+        },
+        "freebsd": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "native_gui": "C",
+          "preview": "C"
+        },
+        "openbsd": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "native_gui": "C",
+          "preview": "C"
+        },
+        "netbsd": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "native_gui": "C",
+          "preview": "C"
+        },
+        "illumos": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "native_gui": "C",
+          "preview": "C"
+        },
+        "aix": {
+          "duplicate_files": "C",
+          "similar_media": "C",
+          "native_gui": "C",
+          "preview": "C"
+        }
+      },
+      "notes": "Image/music modes are distinct from the richer video features of other products."
+    },
+    {
+      "name": "ncdu",
+      "source_url": "https://dev.yorhel.nl/ncdu",
+      "platform_support": {
+        "linux": "D",
+        "macos": "G",
+        "freebsd": "G",
+        "openbsd": "G",
+        "netbsd": "G",
+        "illumos": "G",
+        "aix": "G"
+      },
+      "platform_features": {
+        "linux": {
+          "disk_analysis": "D",
+          "cli": "D",
+          "preview": "D",
+          "structured_export": "D"
+        },
+        "macos": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "freebsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "openbsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "netbsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "illumos": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "aix": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        }
+      },
+      "notes": "POSIX claim is generic for macOS and other Unix cells. Binary export and parallelism require ncdu 2.x; do not assume 1.x parity."
+    },
+    {
+      "name": "gdu",
+      "source_url": "https://github.com/dundee/gdu",
+      "platform_support": {
+        "linux": "D",
+        "macos": "U",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "disk_analysis": "D",
+          "cli": "D",
+          "preview": "D",
+          "structured_export": "D"
+        },
+        "macos": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "freebsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "openbsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "netbsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "illumos": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        },
+        "aix": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C",
+          "structured_export": "C"
+        }
+      },
+      "notes": "Linux installation is documented; other per-OS builds are unresolved. Database/export support does not imply operation audits."
+    },
+    {
+      "name": "dua-cli",
+      "source_url": "https://github.com/Byron/dua-cli",
+      "platform_support": {
+        "linux": "D",
+        "macos": "D",
+        "freebsd": "G",
+        "openbsd": "G",
+        "netbsd": "D",
+        "illumos": "G",
+        "aix": "G"
+      },
+      "platform_features": {
+        "linux": {
+          "disk_analysis": "D",
+          "cli": "D",
+          "preview": "D"
+        },
+        "macos": {
+          "disk_analysis": "D",
+          "cli": "D",
+          "preview": "D"
+        },
+        "freebsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "openbsd": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "netbsd": {
+          "disk_analysis": "D",
+          "cli": "D",
+          "preview": "D"
+        },
+        "illumos": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C"
+        },
+        "aix": {
+          "disk_analysis": "C",
+          "cli": "C",
+          "preview": "C"
+        }
+      },
+      "notes": "NetBSD installation is explicit; other Unix cells use only the generic Unix build guidance. APFS clone accounting is macOS-only and opt-in."
+    },
+    {
+      "name": "dust",
+      "source_url": "https://github.com/bootandy/dust",
+      "platform_support": {
+        "linux": "D",
+        "macos": "D",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "disk_analysis": "D",
+          "cli": "D"
+        },
+        "macos": {
+          "disk_analysis": "D",
+          "cli": "D"
+        },
+        "freebsd": {
+          "disk_analysis": "C",
+          "cli": "C"
+        },
+        "openbsd": {
+          "disk_analysis": "C",
+          "cli": "C"
+        },
+        "netbsd": {
+          "disk_analysis": "C",
+          "cli": "C"
+        },
+        "illumos": {
+          "disk_analysis": "C",
+          "cli": "C"
+        },
+        "aix": {
+          "disk_analysis": "C",
+          "cli": "C"
+        }
+      },
+      "notes": "Read-only terminal usage display; no destructive-preview claim is inferred."
+    },
+    {
+      "name": "GrandPerspective",
+      "source_url": "https://grandperspectiv.sourceforge.net/",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "disk_analysis": "D",
+          "native_gui": "D"
+        }
+      },
+      "notes": "Treemap disk explorer; automatic cache classification is not inferred."
+    },
+    {
+      "name": "GNOME Disk Usage Analyzer (Baobab)",
+      "source_url": "https://apps.gnome.org/Baobab/",
+      "platform_support": {
+        "linux": "D",
+        "macos": "U",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "disk_analysis": "D",
+          "native_gui": "D"
+        },
+        "macos": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "freebsd": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "openbsd": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "netbsd": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "illumos": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "aix": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        }
+      },
+      "notes": "Linux/GNOME documentation; online accounts are not a claim of remote safe-cleaning."
+    },
+    {
+      "name": "Filelight",
+      "source_url": "https://apps.kde.org/filelight/",
+      "platform_support": {
+        "linux": "D",
+        "macos": "U",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "disk_analysis": "D",
+          "native_gui": "D"
+        },
+        "macos": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "freebsd": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "openbsd": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "netbsd": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "illumos": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        },
+        "aix": {
+          "disk_analysis": "C",
+          "native_gui": "C"
+        }
+      },
+      "notes": "KDE/Linux scope; other OS packaging is not established by this review."
+    },
+    {
+      "name": "Sweeper",
+      "source_url": "https://apps.kde.org/sweeper/",
+      "platform_support": {
+        "linux": "D",
+        "macos": "U",
+        "freebsd": "U",
+        "openbsd": "U",
+        "netbsd": "U",
+        "illumos": "U",
+        "aix": "U"
+      },
+      "platform_features": {
+        "linux": {
+          "cache_cleanup": "D",
+          "native_gui": "D"
+        },
+        "macos": {
+          "cache_cleanup": "C",
+          "native_gui": "C"
+        },
+        "freebsd": {
+          "cache_cleanup": "C",
+          "native_gui": "C"
+        },
+        "openbsd": {
+          "cache_cleanup": "C",
+          "native_gui": "C"
+        },
+        "netbsd": {
+          "cache_cleanup": "C",
+          "native_gui": "C"
+        },
+        "illumos": {
+          "cache_cleanup": "C",
+          "native_gui": "C"
+        },
+        "aix": {
+          "cache_cleanup": "C",
+          "native_gui": "C"
+        }
+      },
+      "notes": "Privacy/activity cleanup; no developer or app-uninstaller parity inferred."
+    },
+    {
+      "name": "Stacer",
+      "source_url": "https://github.com/oguzhaninan/Stacer",
+      "platform_support": {
+        "linux": "D",
+        "macos": "N",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "linux": {
+          "cache_cleanup": "D",
+          "native_gui": "D"
+        }
+      },
+      "notes": "Linux system manager; package-manager removal is not macOS bundle uninstall."
+    },
+    {
+      "name": "CleanMyMac",
+      "source_url": "https://macpaw.com/cleanmymac",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "disk_analysis": "D",
+          "cache_cleanup": "D",
+          "duplicate_files": "D",
+          "app_removal": "D",
+          "leftover_search": "D",
+          "native_gui": "D",
+          "preview": "D"
+        }
+      },
+      "notes": "Commercial GUI; CLI is a separate product row and feature evidence."
+    },
+    {
+      "name": "CleanMyMac CLI",
+      "source_url": "https://github.com/MacPaw/cleanmymac-cli",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "disk_analysis": "D",
+          "cache_cleanup": "D",
+          "developer_artifacts": "D",
+          "cli": "D",
+          "preview": "D"
+        }
+      },
+      "notes": "Interactive review is documented; a noninteractive dry-run flag is not inferred."
+    },
+    {
+      "name": "AppCleaner",
+      "source_url": "https://freemacsoft.net/appcleaner/",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "app_removal": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "cache_cleanup": "P",
+          "leftover_search": "P"
+        }
+      },
+      "notes": "Related-file selection attached to an app is not proof of system-wide orphan discovery."
+    },
+    {
+      "name": "AppZapper",
+      "source_url": "https://appzapper.com/",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "app_removal": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "cache_cleanup": "P",
+          "leftover_search": "P"
+        }
+      },
+      "notes": "Related-file removal is narrower than standalone cache cleanup or orphan discovery."
+    },
+    {
+      "name": "App Cleaner & Uninstaller",
+      "source_url": "https://nektony.com/mac-app-cleaner",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "app_removal": "D",
+          "leftover_search": "D",
+          "native_gui": "D",
+          "preview": "D",
+          "cache_cleanup": "P"
+        }
+      },
+      "notes": "Selected app service files and orphaned files; shared-data correctness remains untested."
+    },
+    {
+      "name": "DaisyDisk",
+      "source_url": "https://daisydiskapp.com/",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "disk_analysis": "D",
+          "native_gui": "D",
+          "preview": "D"
+        }
+      },
+      "notes": "Purgeable-space removal differs between direct and App Store editions."
+    },
+    {
+      "name": "BuhoCleaner",
+      "source_url": "https://www.drbuho.com/buhocleaner",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "cache_cleanup": "D",
+          "app_removal": "D",
+          "native_gui": "D"
+        }
+      },
+      "notes": "Only reviewed cleanup/removal claims are affirmed; other features remain unknown here."
+    },
+    {
+      "name": "CCleaner for Mac",
+      "source_url": "https://www.ccleaner.com/ccleaner-mac",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "cache_cleanup": "D",
+          "duplicate_files": "D",
+          "app_removal": "D",
+          "native_gui": "D"
+        }
+      },
+      "notes": "Mac product only; Windows feature lists are not transferred."
+    },
+    {
+      "name": "OnyX",
+      "source_url": "https://www.titanium-software.fr/en/onyx.html",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "cache_cleanup": "D",
+          "app_removal": "D",
+          "native_gui": "D"
+        }
+      },
+      "notes": "Requires an OS-matched version; maintenance is not automatically a reclaimable-byte feature."
+    },
+    {
+      "name": "Gemini 2",
+      "source_url": "https://macpaw.com/gemini",
+      "platform_support": {
+        "linux": "N",
+        "macos": "D",
+        "freebsd": "N",
+        "openbsd": "N",
+        "netbsd": "N",
+        "illumos": "N",
+        "aix": "N"
+      },
+      "platform_features": {
+        "macos": {
+          "duplicate_files": "D",
+          "native_gui": "D"
+        }
+      },
+      "notes": "Duplicate specialist; no automatic disposable-cache classification inferred."
+    }
+  ]
+}
