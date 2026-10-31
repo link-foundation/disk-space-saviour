@@ -632,6 +632,7 @@ class DockerScan {
     this.result.items.push(...(await this.scanEnvironment(env)));
     Object.assign(descriptor, {
       scanStatus: env.scanStatus,
+      scope: env.scanScope ?? null,
       hint: env.probeHint ?? null,
       layerSource: env.writableLayer?.source ?? null,
       timings: env.timings?.toJSON() ?? [],

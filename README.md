@@ -411,6 +411,29 @@ is scanned as a new environment, down to `--depth` levels (default 3). The
 CI job `Docker-in-Docker Integration` builds a host → l1 → l2 chain and runs
 `tests/integration/dind.mjs` against it (`npm run test:dind`).
 
+### Scan roots
+
+Project discovery walks a list of roots per environment; the traversal
+policy (which mount points are crossed) uses the same requested roots, so
+both always agree:
+
+- host: the positional `paths` (`roots` in the API), otherwise the homes and
+  temporary directories;
+- every scanned container, at every Docker depth: `--container-root PATH`
+  (`containerRoots`, repeatable) replaces the defaults; without it, the
+  container's homes, temporary directories, existing common workspace paths
+  (`/workspace`, `/workspaces`, `/app`, `/src`, `/code`, `/project`,
+  `/usr/src/app`) and every host root that also exists inside the container.
+  Host and container paths are different namespaces, so no path is remapped.
+
+Each JSON environment carries `scope`: its roots with `source` (`roots`,
+`container-roots`, `home`, `tmp`, `container-default`) and `status`
+(`searched`, `partial`, `absent`, `inaccessible`, `pruned`, `excluded`,
+`not-searched`), plus `maxDepth`, `exclude` and `prunedMounts`. The text
+report names requested roots that were not searched. `scanStatus: complete`
+means complete within that scope; exclusions, mount boundaries and liveness
+checks still apply.
+
 ## Emergency mode
 
 `dss emergency --free 20G` (at least 20 GiB available) or

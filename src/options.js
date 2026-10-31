@@ -8,6 +8,7 @@ import { parseDuration, parsePercent, parseSize } from './units.js';
 
 export const DEFAULTS = {
   roots: null,
+  containerRoots: null,
   maxDepth: 6,
   staleAge: '1h',
   inactive: '30d',
@@ -78,9 +79,11 @@ export function resolveOptions(input = {}) {
     throw new Error('scanBudget must be a positive finite duration');
   }
   const roots = toList(merged.roots);
+  const containerRoots = toList(merged.containerRoots);
   return {
     ...merged,
     roots: roots.length > 0 ? roots : null,
+    containerRoots: containerRoots.length > 0 ? containerRoots : null,
     maxDepth: Number(merged.maxDepth),
     dockerDepth: Number(merged.dockerDepth),
     staleAgeMs: toMs(staleAge),
