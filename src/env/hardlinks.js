@@ -16,8 +16,12 @@
  *   (`{path, id, nlink, bytes}`), used to account a whole selection.
  */
 
-/** POSIX shell fragment listing multi-link files below "$t" (GNU/busybox stat). */
-export const LINKS_SCRIPT = `find "$t" -xdev ! -type d -links +1 -exec stat -c '%d:%i %h %b %B %n' -- {} + 2>/dev/null`;
+/** POSIX shell fragment listing multi-link files below "$t" (GNU/busybox or BSD stat). */
+export const LINKS_SCRIPT = `if stat -c %h / >/dev/null 2>&1; then
+  find "$t" -xdev ! -type d -links +1 -exec stat -c '%d:%i %h %b %B %n' -- {} + 2>/dev/null
+else
+  find "$t" -xdev ! -type d -links +1 -exec stat -f '%d:%i %l %b 512 %N' {} + 2>/dev/null
+fi`;
 
 /** Parses LINKS_SCRIPT output lines (`dev:ino nlink blocks blocksize path`). */
 export function parseLinks(text) {

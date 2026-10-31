@@ -19,9 +19,11 @@ function run(args) {
 
 export async function appIdentity(target, home = os.homedir()) {
   const full = path.resolve(target);
-  const allowed = ['/Applications', path.join(home, 'Applications')];
+  const allowed = ['/Applications', path.join(home, 'Applications')].map(
+    (root) => path.resolve(root)
+  );
   if (
-    !allowed.some((root) => full.startsWith(`${root}/`)) ||
+    !allowed.some((root) => full.startsWith(`${root}${path.sep}`)) ||
     !full.endsWith('.app')
   ) {
     throw new Error(
