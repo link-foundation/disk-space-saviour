@@ -455,6 +455,18 @@ function swapLines(swap) {
   ];
 }
 
+/** Requested roots that were not searched, so coverage gaps are visible. */
+function scopeLines(env) {
+  const skipped = (env.scope?.roots ?? []).filter(
+    (root) =>
+      ['roots', 'container-roots'].includes(root.source) &&
+      !['searched', 'pending'].includes(root.status)
+  );
+  return skipped.map(
+    (root) => `  ${env.label}: root ${root.path} ${root.status}`
+  );
+}
+
 function environmentStatusLines(env) {
   const lines = [];
   if (env.layerSource) {
@@ -470,6 +482,7 @@ function environmentStatusLines(env) {
   if (env.hint) {
     lines.push(`  ${env.label}: ${env.hint}`);
   }
+  lines.push(...scopeLines(env));
   return lines;
 }
 

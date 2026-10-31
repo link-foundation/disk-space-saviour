@@ -100,6 +100,7 @@ import { hostExecutor } from '../exec.js';
 import { parseBundleIdentifier } from '../app-owners.js';
 import { matchesGlob } from '../paths.js';
 import { mapLimit } from './parallel.js';
+import { withLinkAccounting } from './hardlinks.js';
 import { directoryFingerprint, SIZE_MAX_AGE } from '../scan-state.js';
 import { indexedDirectories } from './platform-index.js';
 
@@ -213,6 +214,15 @@ async function makeWritable(target) {
   }
 }
 
+function linkOf(stats, file) {
+  return {
+    path: file,
+    id: `${stats.dev}:${stats.ino}`,
+    nlink: stats.nlink,
+    bytes: diskBytes(stats),
+  };
+}
+
 export class LocalEnv {
   /**
    * @param {{homes?: string[], tmpDirs?: string[], executor?: object,
@@ -322,6 +332,7 @@ export class LocalEnv {
       mtimeMs: stats.mtimeMs,
       ctimeMs: stats.ctimeMs,
       inode: `${stats.dev}:${stats.ino}`,
+      nlink: stats.nlink,
       uid: stats.uid,
       gid: stats.gid,
       mode: stats.mode,
@@ -440,14 +451,16 @@ export class LocalEnv {
       return null;
     }
     const seen = new Set();
+    const links = [];
     let bytes = 0;
     let apparentBytes = 0;
     let files = 0;
     let errors = 0;
     let newestMtimeMs = 0;
-    const account = (stats) => {
+    const account = (stats, full) => {
       if (stats.nlink > 1 && !stats.isDirectory()) {
         const key = `${stats.dev}:${stats.ino}`;
+        links.push(linkOf(stats, full));
         if (seen.has(key)) {
           return;
         }
@@ -463,7 +476,7 @@ export class LocalEnv {
         newestMtimeMs = Math.max(newestMtimeMs, stats.mtimeMs);
       }
     };
-    account(root);
+    account(root, target);
     const visit = async (dir) => {
       let names;
       try {
@@ -489,7 +502,7 @@ export class LocalEnv {
         ) {
           continue;
         }
-        account(stats);
+        account(stats, full);
         if (stats.isDirectory()) {
           subdirs.push(full);
         }
@@ -511,7 +524,10 @@ export class LocalEnv {
     if (files === 0) {
       newestMtimeMs = root.mtimeMs;
     }
-    return { bytes, apparentBytes, files, errors, newestMtimeMs };
+    return withLinkAccounting(
+      { bytes, apparentBytes, files, errors, newestMtimeMs },
+      links
+    );
   }
 
   /**
@@ -734,6 +750,29 @@ export class LocalEnv {
     return usage;
   }
 
+  /** Multi-link files below `target`, which `du` cannot attribute. */
+  async #multiLinks(target) {
+    const result = await this.run([
+      'find',
+      target,
+      '-xdev',
+      '!',
+      '-type',
+      'd',
+      '-links',
+      '+1',
+      '-print0',
+    ]);
+    const files = result.stdout.split('\0').filter(Boolean);
+    const stats = await mapLimit(files, 32, async (file) => [
+      file,
+      await this.#lstat(file),
+    ]);
+    return stats
+      .filter(([, entry]) => entry)
+      .map(([file, entry]) => linkOf(entry, file));
+  }
+
   async quickUsage(target) {
     const stats = await this.stat(target);
     if (!stats) {
@@ -755,13 +794,16 @@ export class LocalEnv {
     if (result.code !== 0 || !match) {
       return this.rawUsage(target);
     }
-    const usage = {
-      bytes: Number(match[1]) * 1024,
-      apparentBytes: Number(match[1]) * 1024,
-      newestMtimeMs: 0,
-      files: 0,
-      errors: 0,
-    };
+    const usage = withLinkAccounting(
+      {
+        bytes: Number(match[1]) * 1024,
+        apparentBytes: Number(match[1]) * 1024,
+        newestMtimeMs: 0,
+        files: 0,
+        errors: 0,
+      },
+      await this.#multiLinks(target)
+    );
     if (this.scanMetrics) {
       this.scanMetrics.directoriesSized++;
     }

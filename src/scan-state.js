@@ -98,6 +98,7 @@ export async function authenticatedReport(report, directory, now = Date.now()) {
 export function scopeKey(options) {
   const names = [
     'roots',
+    'containerRoots',
     'scanners',
     'host',
     'docker',

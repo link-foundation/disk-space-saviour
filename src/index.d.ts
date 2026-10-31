@@ -9,6 +9,13 @@ export type Duration = number | string;
 export interface ScanOptions {
   /** Directories to search for projects (default: homes and tmp dirs). */
   roots?: string[] | string | null;
+  /**
+   * Project roots inside every scanned container (all Docker depths).
+   * Replaces the container defaults; without it containers search their
+   * homes, temporary directories, common workspace paths and every `roots`
+   * path that exists inside them.
+   */
+  containerRoots?: string[] | string | null;
   /** Directory depth for project search. */
   maxDepth?: number;
   /** Time budget per filesystem environment (`2m`); incomplete findings are kept. */
@@ -117,7 +124,15 @@ export interface Item {
   description: string;
   path: string | null;
   paths: string[];
+  /**
+   * Physically reclaimable bytes: blocks of hard-linked files with a link
+   * outside the item are not counted.
+   */
   bytes: number;
+  /** Blocks reachable from the item (each inode once); set with sharedBytes. */
+  allocatedBytes?: number;
+  /** Blocks retained by hard links outside the item; present when non-zero. */
+  sharedBytes?: number;
   /** Cached size is advisory; cleanup always measures again. */
   sizeEstimated?: boolean;
   /** Merged filesystem bytes, including image data, when measured in Docker. */
@@ -198,7 +213,30 @@ export interface EnvironmentDescriptor {
     | 'budget-exceeded'
     | 'error'
     | null;
+  /** What `scanStatus: complete` covers in this environment. */
+  scope?: ScanScope | null;
   layerSource?: string | null;
+}
+
+export interface ScanScope {
+  roots: Array<{
+    path: string;
+    source: 'roots' | 'container-roots' | 'home' | 'tmp' | 'container-default';
+    status:
+      | 'searched'
+      | 'partial'
+      | 'absent'
+      | 'inaccessible'
+      | 'pruned'
+      | 'excluded'
+      | 'not-searched'
+      | 'pending';
+  }>;
+  maxDepth: number;
+  exclude: string[];
+  /** Mount points never traversed (unselected, read-only or overlay). */
+  prunedMounts: string[];
+  note: string;
 }
 
 export interface TierTotal {
@@ -260,6 +298,10 @@ export interface AuditEntry {
   freedBytes: number;
   /** True when authoritative before/after allocation could not be measured. */
   freedEstimated?: boolean;
+  /** `'hardlink-aware-estimate'`: freedBytes is the link-aware selection estimate. */
+  freedAccounting?: 'hardlink-aware-estimate';
+  /** Blocks of deleted files that stay allocated through outside hard links. */
+  sharedBytes?: number;
   durationMs: number;
   backup?: string;
   [key: string]: unknown;

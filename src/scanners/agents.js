@@ -20,6 +20,7 @@ import { scanItems } from '../env/scope.js';
  * (the same rule the agent's own `Project.prune()` uses).
  */
 
+import { itemSize } from '../env/hardlinks.js';
 import { block, makeItem } from '../items.js';
 import { listMany, olderThan, scanTimeBusy } from './common.js';
 
@@ -127,7 +128,7 @@ async function appItems(context, app, root) {
       ecosystem: 'agents',
       description: `${app.name} snapshot store ${state.entry.name}`,
       path: state.entry.path,
-      bytes: usage.bytes,
+      ...itemSize([[state.entry.path, usage]]),
       newestMtimeMs: usage.newestMtimeMs,
       worktree: state.worktree,
       ...verdict,

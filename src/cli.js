@@ -46,6 +46,9 @@ Scope:
   --depth N                  Docker nesting depth to recurse into (default 3)
   --recursive                docker: recurse into nested daemons
   --container ID|NAME        limit Docker work to these containers (repeat)
+  --container-root PATH      project root inside every scanned container,
+                             at any Docker depth; replaces the container
+                             defaults (repeat)
   --max-depth N              directory depth for project search (default 6)
   --scan-budget AGE          time budget per filesystem environment (2m)
   --only NAME|ID|PATH        only these ecosystems, rules, kinds, item ids,
@@ -94,6 +97,7 @@ const OPTIONS = {
   depth: { type: 'string' },
   recursive: { type: 'boolean' },
   container: { type: 'string', multiple: true },
+  'container-root': { type: 'string', multiple: true },
   'max-depth': { type: 'string' },
   'scan-budget': { type: 'string' },
   only: { type: 'string', multiple: true },
@@ -173,6 +177,7 @@ function tierOf(values) {
 export function toOptions(values, paths = []) {
   return {
     roots: paths.length > 0 ? paths : null,
+    containerRoots: values['container-root'],
     docker: dockerMode(values),
     dockerDepth: integer(values.depth, '--depth'),
     containers: values.container,

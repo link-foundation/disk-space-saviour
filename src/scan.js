@@ -13,13 +13,20 @@ import { scanDocker } from './docker/scan.js';
 import { LocalEnv } from './env/local.js';
 import { configureScanPolicy } from './env/policy.js';
 import { configureCacheRoots } from './env/cache-roots.js';
+import {
+  CONTAINER_ROOTS,
+  finishScope,
+  requestedRoots,
+  resolveRoots,
+  scanScope,
+} from './env/roots.js';
 import { checkSignal, environmentScope } from './env/scope.js';
 import { block, tierTotals } from './items.js';
 import { hostExecutor, trace } from './exec.js';
 import { GitInspector } from './git.js';
 import { LivenessProbe } from './liveness.js';
 import { resolveOptions } from './options.js';
-import { existingPaths, isWithin, matchesExcluded } from './paths.js';
+import { isWithin, matchesExcluded } from './paths.js';
 import { scanAgents } from './scanners/agents.js';
 import { GLOBAL_RULES, scanGlobal, targetedRules } from './scanners/global.js';
 import { scanProjects } from './scanners/projects.js';
@@ -50,6 +57,7 @@ const reportEnvironments = new WeakMap();
 export const scannedEnvironment = (report) => reportEnvironments.get(report);
 const RESCAN_OPTIONS = new Set([
   'roots',
+  'containerRoots',
   'scanners',
   'containers',
   'host',
@@ -120,6 +128,7 @@ export async function revalidateReport(saved, input = {}) {
   const scope = Object.fromEntries(
     [
       'roots',
+      'containerRoots',
       'scanners',
       'containers',
       'host',
@@ -140,25 +149,7 @@ export async function revalidateReport(saved, input = {}) {
   return sealReport(current);
 }
 
-/** Common project locations inside containers, scanned when present. */
-export const CONTAINER_ROOTS = [
-  '/workspace',
-  '/workspaces',
-  '/app',
-  '/src',
-  '/code',
-  '/project',
-  '/usr/src/app',
-];
-
-async function defaultRoots(env, homes, tmpDirs) {
-  const roots = [...homes, ...tmpDirs];
-  if (env.kind === 'container') {
-    const present = await existingPaths(env, CONTAINER_ROOTS);
-    roots.push(...CONTAINER_ROOTS.filter((root) => present.has(root)));
-  }
-  return [...new Set(roots)];
-}
+export { CONTAINER_ROOTS };
 
 /**
  * Builds the scanner context of one environment.
@@ -169,7 +160,7 @@ async function defaultRoots(env, homes, tmpDirs) {
 export async function environmentContext(env, options, overrides = {}) {
   await configureScanPolicy(env, {
     ...options,
-    roots: overrides.roots ?? options.roots,
+    roots: requestedRoots(env, options, overrides),
   });
   const liveness = new LivenessProbe(env, {
     staleAgeMs: options.staleAgeMs,
@@ -180,7 +171,14 @@ export async function environmentContext(env, options, overrides = {}) {
   const homes = await env.homeDirs();
   await configureCacheRoots(env, homes);
   const tmpDirs = await env.tmpDirs();
-  const roots = overrides.roots ?? (await defaultRoots(env, homes, tmpDirs));
+  const { roots, entries } = await resolveRoots(
+    env,
+    options,
+    overrides,
+    homes,
+    tmpDirs
+  );
+  env.scanScope = scanScope(env, options, entries);
   return {
     env,
     git: new GitInspector(env),
@@ -274,6 +272,7 @@ export async function scanEnvironment(env, options, extra = {}) {
     }
     return items;
   } finally {
+    finishScope(env, selectedScanners(options).includes('projects'));
     clearTimeout(timer);
     clearInterval(interval);
     options.signal?.removeEventListener('abort', abort);
@@ -551,6 +550,7 @@ function envDescriptor(env, depth, chain) {
     chain,
     hint: env.probeHint ?? null,
     scanStatus: env.scanStatus ?? null,
+    scope: env.scanScope ?? null,
     layerSource: env.writableLayer?.source ?? null,
     timings: env.timings?.toJSON() ?? [],
   };
@@ -570,6 +570,15 @@ async function withDisk(env, descriptor, options) {
   };
 }
 
+/**
+ * Scans one running container found by the Docker walk (any depth). Roots
+ * come from `containerRoots`/`roots` via environmentContext, never from the
+ * host's resolved defaults.
+ */
+export function containerScanner(options, errors) {
+  return (inner) => scanEnvironment(inner, options, { errors });
+}
+
 async function dockerSection(env, options, errors) {
   if (options.docker === false) {
     return null;
@@ -583,7 +592,7 @@ async function dockerSection(env, options, errors) {
     const result = await scanDocker(
       hostRecord,
       { ...options, selfContainerIds: await selfContainerIds(env) },
-      (inner) => scanEnvironment(inner, options, { errors })
+      containerScanner(options, errors)
     );
     errors.push(...result.errors);
     if (options.docker === true && result.daemons.length === 0) {

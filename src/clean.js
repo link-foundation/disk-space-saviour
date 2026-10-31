@@ -12,6 +12,7 @@
  * log.
  */
 
+import { selectionBytes } from './env/hardlinks.js';
 import { once } from 'node:events';
 import { createWriteStream, promises as fsp } from 'node:fs';
 import path from 'node:path';
@@ -79,6 +80,7 @@ export function cleanOrder(a, b) {
   );
 }
 
+/** Plain per-path sum: used for before/after measurements of one set. */
 function sumBytes(usages, paths = [...usages.keys()]) {
   let total = 0;
   for (const target of paths) {
@@ -334,7 +336,7 @@ export class Cleaner {
     const fresh = {
       ...item,
       paths,
-      bytes: sumBytes(usages, paths),
+      bytes: selectionBytes(usages, paths).bytes,
       newestMtimeMs: newest || item.newestMtimeMs,
       action: type === 'remove' ? { ...item.action, paths } : item.action,
     };
@@ -559,7 +561,12 @@ export class Cleaner {
         entry.reason = boundary;
         return;
       }
-      await this.#deletePaths(ctx, entry, [target], usage?.bytes ?? 0);
+      await this.#deletePaths(
+        ctx,
+        entry,
+        [target],
+        selectionBytes(new Map([[target, usage]]), [target])
+      );
     }
     if (entry.deletedPaths.length === 0 && entry.skippedPaths.length > 0) {
       entry.reason = 'every path was in use or recently written';
@@ -599,7 +606,12 @@ export class Cleaner {
     if (!selected.length) {
       return true;
     }
-    await this.#deletePaths(ctx, entry, selected, sumBytes(usages, selected));
+    await this.#deletePaths(
+      ctx,
+      entry,
+      selected,
+      selectionBytes(usages, selected)
+    );
     const lost = await this.health.check(ctx.env, item);
     if (lost) {
       entry.reason = lost;
@@ -638,7 +650,12 @@ export class Cleaner {
     return usage.bytes === 0 ? 'no writable bytes remain' : null;
   }
 
-  async #deletePaths(ctx, entry, selected, estimate) {
+  /** `accounted`: hard-link aware {bytes, sharedBytes} of `selected`. */
+  async #deletePaths(ctx, entry, selected, accounted) {
+    const estimate = accounted.bytes;
+    if (accounted.sharedBytes > 0) {
+      entry.sharedBytes = (entry.sharedBytes ?? 0) + accounted.sharedBytes;
+    }
     const before = await ctx.env.writableLayer?.allocatedBytes?.(
       selected,
       ctx.env.path
@@ -661,9 +678,10 @@ export class Cleaner {
     if (typeof before === 'number' && typeof after === 'number') {
       return Math.max(0, before - after);
     }
-    if (ctx.env.writableLayer) {
-      entry.freedEstimated = true;
-    }
+    // Without a block measurement the hard-link aware selection estimate
+    // is reported, and marked as an estimate.
+    entry.freedEstimated = true;
+    entry.freedAccounting = 'hardlink-aware-estimate';
     return fallback;
   }
 
