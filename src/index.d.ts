@@ -124,7 +124,15 @@ export interface Item {
   description: string;
   path: string | null;
   paths: string[];
+  /**
+   * Physically reclaimable bytes: blocks of hard-linked files with a link
+   * outside the item are not counted.
+   */
   bytes: number;
+  /** Blocks reachable from the item (each inode once); set with sharedBytes. */
+  allocatedBytes?: number;
+  /** Blocks retained by hard links outside the item; present when non-zero. */
+  sharedBytes?: number;
   /** Cached size is advisory; cleanup always measures again. */
   sizeEstimated?: boolean;
   /** Merged filesystem bytes, including image data, when measured in Docker. */
@@ -290,6 +298,10 @@ export interface AuditEntry {
   freedBytes: number;
   /** True when authoritative before/after allocation could not be measured. */
   freedEstimated?: boolean;
+  /** `'hardlink-aware-estimate'`: freedBytes is the link-aware selection estimate. */
+  freedAccounting?: 'hardlink-aware-estimate';
+  /** Blocks of deleted files that stay allocated through outside hard links. */
+  sharedBytes?: number;
   durationMs: number;
   backup?: string;
   [key: string]: unknown;

@@ -213,9 +213,15 @@ export class WritableLayer {
               )
           )
         : 0;
+      // Upper-layer blocks are measured directly: merged-view link data
+      // does not describe them, so the writable bytes are final.
+      const plain = { ...usage };
+      delete plain.links;
+      delete plain.sharedBytes;
       result.set(target, {
-        ...usage,
+        ...plain,
         bytes,
+        allocatedBytes: bytes,
         totalBytes: usage.bytes,
         imageBytes: known ? Math.max(0, usage.bytes - bytes) : 0,
         sizeUnknown: !known,

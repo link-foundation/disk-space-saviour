@@ -6,6 +6,7 @@ import { checkSignal, scanItems } from '../env/scope.js';
  * ../rules/downloads.js.
  */
 
+import { itemSize } from '../env/hardlinks.js';
 import { CACHE_RULES } from '../rules/ecosystems.js';
 import { OTHER_RULES, TEMP_CLONE_RULES } from '../rules/other.js';
 import { APP_RULES, expandChromiumCaches } from '../rules/apps.js';
@@ -199,7 +200,7 @@ async function buildItem(context, rule, base, group, homes) {
     description: rule.description,
     path: paths[0],
     paths,
-    bytes: group.reduce((sum, entry) => sum + entry.usage.bytes, 0),
+    ...itemSize(group.map((entry) => [entry.path, entry.usage])),
     sizeEstimated: group.some((entry) => entry.usage.estimated),
     newestMtimeMs: Math.max(...group.map((e) => e.usage.newestMtimeMs ?? 0)),
     tier: rule.tier ?? 'safe',

@@ -20,6 +20,7 @@ import { sharedWritableLayer } from '../docker/writable.js';
 import { containerExecutor, shellQuote, trace } from '../exec.js';
 import { DEFAULT_SKIP_NAMES, parseDf, processAliases } from './local.js';
 import { batches } from './batches.js';
+import { LINKS_SCRIPT, parseLinks, withLinkAccounting } from './hardlinks.js';
 import { signalExecutor } from './scope.js';
 
 const STAT_FORMAT = '%F|%s|%b|%B|%Y|%n';
@@ -44,6 +45,8 @@ const USAGE_MANY_SCRIPT = `for t in "$@"; do
   du -skx -- "$t" 2>/dev/null | cut -f1
   find "$t" -xdev ! -type d -exec stat -c %Y {} + 2>/dev/null | awk 'BEGIN{m=0;n=0}{n++; if ($1>m) m=$1} END{print n, m}'
   stat -c %Y -- "$t"
+  echo links
+  ${LINKS_SCRIPT}
 done
 true`;
 
@@ -120,10 +123,18 @@ function splitRecords(output) {
 }
 
 function parseUsage(body) {
-  const [kib, counts = '', rootMtime] = body.trim().split('\n');
+  const [head, links = ''] = body.split('\nlinks\n');
+  const [kib, counts = '', rootMtime] = head.trim().split('\n');
   const [files, newest] = counts.trim().split(/\s+/).map(Number);
   const bytes = Number(kib) * 1024;
   const newestSeconds = files > 0 ? newest : Number(rootMtime);
+  return withLinkAccounting(
+    usageFields(bytes, files, newestSeconds),
+    parseLinks(links)
+  );
+}
+
+function usageFields(bytes, files, newestSeconds) {
   return {
     bytes: Number.isFinite(bytes) ? bytes : 0,
     apparentBytes: Number.isFinite(bytes) ? bytes : 0,
@@ -292,7 +303,7 @@ export class ShellEnv {
       const result = await this.executor.run([
         'stat',
         '-c',
-        `${STAT_FORMAT}|%d:%i:%u:%g:%f`,
+        `${STAT_FORMAT}|%d:%i:%u:%g:%f:%h`,
         '--',
         ...batch,
       ]);
@@ -310,6 +321,7 @@ export class ShellEnv {
               identity.length > 4
                 ? Number.parseInt(identity[4], 16)
                 : undefined,
+            nlink: identity.length > 5 ? Number(identity[5]) : undefined,
           });
         }
       }

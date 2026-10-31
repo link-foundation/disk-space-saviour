@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 
+import { itemSize } from '../env/hardlinks.js';
 import { scanItems } from '../env/scope.js';
 /**
  * Per-project dependency, build and cache directories (node_modules, target,
@@ -241,7 +242,7 @@ async function projectItem(context, { candidate, rule }, usage) {
     ecosystem: rule.ecosystem,
     description: `${ECOSYSTEM_NAMES.get(rule.ecosystem)} ${rule.description}`,
     path: candidate.path,
-    bytes: usage?.bytes ?? 0,
+    ...itemSize([[candidate.path, usage]]),
     sizeEstimated: Boolean(usage?.estimated),
     newestMtimeMs: usage?.newestMtimeMs ?? 0,
     project,

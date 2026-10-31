@@ -10,7 +10,9 @@ try {
   const home = path.join(base, 'home');
   const tmp = path.join(base, 'tmp');
   const custom = path.join(base, 'custom-projects');
-  for (const dir of [home, tmp, custom]) await fs.mkdir(dir);
+  for (const dir of [home, tmp, custom]) {
+    await fs.mkdir(dir);
+  }
   const makeEnv = () => {
     const env = new LocalEnv({ homes: [home], tmpDirs: [tmp] });
     env.kind = 'container';

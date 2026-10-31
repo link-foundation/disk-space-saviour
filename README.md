@@ -434,6 +434,18 @@ report names requested roots that were not searched. `scanStatus: complete`
 means complete within that scope; exclusions, mount boundaries and liveness
 checks still apply.
 
+### Hard links
+
+Sizes are physical reclaimable bytes. A file's blocks count toward an item
+only when every hard link to it lies inside the deletion set: a package
+cache or `node_modules` hard-linked to a shared store (pnpm, Nix, uv) reports
+those blocks as `sharedBytes`, next to `allocatedBytes` (what `du` prints).
+Each `dev:inode` is counted once across the whole selection, so files linked
+between two selected paths are reclaimable once. In the audit log,
+`sharedBytes` lists blocks that stayed allocated; `freedBytes` is a measured
+before/after value for Docker writable layers and otherwise the link-aware
+estimate, marked with `freedEstimated` and `freedAccounting`.
+
 ## Emergency mode
 
 `dss emergency --free 20G` (at least 20 GiB available) or
