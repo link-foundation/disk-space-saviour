@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.23.0
+
+### Minor Changes
+
+- Recursive container scans honor requested roots: `--container-root PATH` (`containerRoots`) sets project roots inside every scanned container at any Docker depth, and host roots that exist inside a container join its defaults. The same roots reach the traversal policy and project discovery. Every environment now reports its effective `scope` (roots with source and status, max depth, exclusions, pruned mounts) and the text report names requested roots that were absent, inaccessible, pruned, excluded or not searched.
+
+  Hard-link aware sizes: items report physically reclaimable bytes, with `allocatedBytes` and `sharedBytes` when links outside the item keep blocks allocated. Each inode is counted once across a selected deletion set, and the audit records `sharedBytes` and marks link-aware estimated `freedBytes`.
+
+  Add explicit macOS app bundle removal through native Trash with process checks,
+  dry runs and audits. Report possible app leftovers separately from user data,
+  without automatically deleting either category.
+
 ## 0.22.1
 
 ### Patch Changes
