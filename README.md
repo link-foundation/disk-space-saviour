@@ -443,7 +443,9 @@ those blocks as `sharedBytes`, next to `allocatedBytes` (what `du` prints).
 Each `dev:inode` is counted once across the whole selection, so files linked
 between two selected paths are reclaimable once. In the audit log,
 `sharedBytes` lists blocks that stayed allocated; `freedBytes` is a measured
-before/after value for Docker writable layers and otherwise the link-aware
+before/after value for Docker writable layers (counting only blocks whose
+every hard link is inside the deletion set, marked
+`freedAccounting: 'hardlink-aware-measurement'`) and otherwise the link-aware
 estimate, marked with `freedEstimated` and `freedAccounting`.
 
 ## Emergency mode

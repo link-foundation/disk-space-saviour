@@ -3,7 +3,8 @@ import { DockerCli } from './cli.js';
 import { isWithin } from '../paths.js';
 import { trace } from '../exec.js';
 import { resetDiffSnapshots } from './snapshots.js';
-import { rootUpperdir, upperdirBytes } from './upperdir.js';
+import { rootUpperdir, upperdirBytes, upperdirUsage } from './upperdir.js';
+import { accountLinks } from '../env/hardlinks.js';
 
 let measurementQueue = Promise.resolve();
 const layers = new WeakMap();
@@ -152,14 +153,16 @@ export class WritableLayer {
     ) {
       return null;
     }
-    const measured = await upperdirBytes(
+    const measured = await upperdirUsage(
       this.docker.executor,
       paths.map((target) => `${upperdir}/${target.replace(/^\/+/, '')}`)
     );
-    const values = [...measured.values()];
+    const values = [...measured.entries()];
+    // Hard-link aware (issue 51): blocks retained by a link outside the
+    // measured set are reported as shared, never as reclaimable `bytes`.
     return values.length === paths.length &&
-      values.every((value) => value !== null)
-      ? values.reduce((sum, value) => sum + value, 0)
+      values.every(([, value]) => value !== null)
+      ? accountLinks(values)
       : null;
   }
 

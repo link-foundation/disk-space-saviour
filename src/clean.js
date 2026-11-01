@@ -675,8 +675,16 @@ export class Cleaner {
   }
 
   #freedBytes(ctx, entry, before, after, fallback) {
-    if (typeof before === 'number' && typeof after === 'number') {
-      return Math.max(0, before - after);
+    if (isMeasured(before) && isMeasured(after)) {
+      if (typeof before === 'number' || typeof after === 'number') {
+        // A bare path-size delta is not proof of physical recovery (issue 51).
+        entry.freedAccounting ??= 'path-delta';
+        return Math.max(0, measuredBytes(before) - measuredBytes(after));
+      }
+      // Link-aware before/after: blocks retained by links outside the
+      // deletion set are shared, never credited as physically freed.
+      entry.freedAccounting ??= 'hardlink-aware-measurement';
+      return Math.max(0, before.bytes - after.bytes);
     }
     // Without a block measurement the hard-link aware selection estimate
     // is reported, and marked as an estimate.
@@ -1054,4 +1062,12 @@ export async function finishAudit(audit, report, options) {
     await recordAudit(audit, options);
   }
   return audit;
+}
+
+function isMeasured(value) {
+  return typeof value === 'number' || typeof value?.bytes === 'number';
+}
+
+function measuredBytes(value) {
+  return typeof value === 'number' ? value : value.bytes;
 }
