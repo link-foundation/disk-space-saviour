@@ -298,8 +298,16 @@ export interface AuditEntry {
   freedBytes: number;
   /** True when authoritative before/after allocation could not be measured. */
   freedEstimated?: boolean;
-  /** `'hardlink-aware-estimate'`: freedBytes is the link-aware selection estimate. */
-  freedAccounting?: 'hardlink-aware-estimate';
+  /**
+   * `'hardlink-aware-measurement'`: before/after writable-layer measurement
+   * that excludes blocks retained by hard links outside the deletion set;
+   * `'hardlink-aware-estimate'`: the link-aware selection estimate;
+   * `'path-delta'`: a bare per-path size delta, not proof of reclamation.
+   */
+  freedAccounting?:
+    | 'hardlink-aware-measurement'
+    | 'hardlink-aware-estimate'
+    | 'path-delta';
   /** Blocks of deleted files that stay allocated through outside hard links. */
   sharedBytes?: number;
   durationMs: number;
