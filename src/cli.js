@@ -50,7 +50,8 @@ Scope:
                              at any Docker depth; replaces the container
                              defaults (repeat)
   --max-depth N              directory depth for project search (default 6)
-  --scan-budget AGE          time budget per filesystem environment (2m)
+  --scan-budget AGE          time budget per filesystem environment
+                             (10m; emergency: 2m)
   --only NAME|ID|PATH        only these ecosystems, rules, kinds, item ids,
                              or items inside a path or glob (repeat)
   --exclude PATH|GLOB        never touch matching paths (repeat)
@@ -464,6 +465,8 @@ class Cli {
   }
 
   async emergency(options, values) {
+    // A full disk cannot wait for a complete walk.
+    options = { ...options, scanBudget: options.scanBudget ?? '2m' };
     try {
       resolveGoal(options);
     } catch (error) {

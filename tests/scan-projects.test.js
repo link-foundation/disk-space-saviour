@@ -212,9 +212,10 @@ describe('project activity and markers', () => {
       });
       expect(audit.entries[0].reason).toMatch(/no lockfile remains/);
       expect(existsSync(modules)).toBe(true);
-      expect(
-        (await scan(input)).items.some((item) => item.path === modules)
-      ).toBe(false);
+      const rescanned = (await scan(input)).items.find(
+        (item) => item.path === modules
+      );
+      expect(rescanned.blockers.join()).toMatch(/no lockfile beside it/);
       removeRoot(root);
     }
   );

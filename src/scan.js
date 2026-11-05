@@ -3,6 +3,7 @@
  * Docker, inside running containers and nested daemons. Never deletes.
  */
 
+import { formatBytes } from './units.js';
 import {
   configureContainerHost,
   resetWritableLayers,
@@ -579,6 +580,29 @@ export function containerScanner(options, errors) {
   return (inner) => scanEnvironment(inner, options, { errors });
 }
 
+/** Docker is installed but its daemon is down, so its data went unread. */
+async function noteDockerNotInspected(env, options) {
+  if (!(await env.which('docker'))) {
+    return;
+  }
+  const homes = options.homes ?? (await env.homeDirs());
+  const images = await Promise.all(
+    homes.map((home) =>
+      env.usage(
+        env.path.join(
+          home,
+          'Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw'
+        )
+      )
+    )
+  );
+  const bytes = images.reduce((sum, usage) => sum + (usage?.bytes ?? 0), 0);
+  const size = bytes > 0 ? ` (its disk image holds ${formatBytes(bytes)})` : '';
+  env.scanNotes?.push(
+    `Docker was not inspected${size}: its daemon is not reachable. Start Docker and rerun to include it.`
+  );
+}
+
 async function dockerSection(env, options, errors) {
   if (options.docker === false) {
     return null;
@@ -595,6 +619,9 @@ async function dockerSection(env, options, errors) {
       containerScanner(options, errors)
     );
     errors.push(...result.errors);
+    if (options.docker !== true && result.daemons.length === 0) {
+      await noteDockerNotInspected(env, options);
+    }
     if (options.docker === true && result.daemons.length === 0) {
       errors.push({
         env: env.id,
@@ -676,6 +703,7 @@ async function scanScoped(input) {
   resetWritableLayers(env.executor);
   env.writableLayer = null;
   env.scanPolicy = null;
+  env.scanNotes = [];
   env.timings = new PhaseTimer();
   await configureScanPolicy(env, options);
   await configureContainerHost(
@@ -761,6 +789,7 @@ export function buildReport({
     environments,
     items,
     shared,
+    notes: env.scanNotes ?? [],
     totals: tierTotals(items),
     docker: docker
       ? {

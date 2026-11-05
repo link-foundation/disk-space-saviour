@@ -209,7 +209,7 @@ describe('plans built on an incomplete scan', () => {
     expect(
       incompleteScanLines([{ label: 'host', status: 'budget-exceeded' }])
     ).toEqual([
-      'WARNING: the scan of host behind this plan stopped early (budget-exceeded), so items it did not reach were not considered; rerun with a larger --scan-budget (for example --scan-budget 5m).',
+      'WARNING: the scan of host behind this plan stopped early (budget-exceeded), so items it did not reach were not considered; rerun with a larger --scan-budget (for example --scan-budget 30m).',
     ]);
     expect(incompleteScanLines(undefined)).toEqual([]);
   });

@@ -3,7 +3,7 @@
  * (`--json`) are the report and audit objects themselves.
  */
 
-import { TIERS, consentFlag } from './items.js';
+import { TIERS, consentFlag, dropNested } from './items.js';
 import { formatBytes, formatDuration } from './units.js';
 
 const DEFAULT_LIMIT = 25;
@@ -77,7 +77,7 @@ function tierSection(report, tier, options) {
     return [];
   }
   const showEnv = manyEnvironments(report);
-  const bytes = items.reduce((sum, item) => sum + item.bytes, 0);
+  const bytes = dropNested(items).reduce((sum, item) => sum + item.bytes, 0);
   return [
     '',
     `${tier.toUpperCase()}  ${plural(items.length, 'item')}, ${formatBytes(bytes)}`,
@@ -507,6 +507,9 @@ export function formatReport(report, options = {}) {
   lines.push(...report.environments.flatMap(environmentStatusLines));
   lines.push(...blockedSection(report, { limit }));
   lines.push(...sharedSection(report.shared));
+  if (report.notes?.length) {
+    lines.push('', 'NOTES', ...report.notes.map((note) => `  ${note}`));
+  }
   lines.push(...conditionsSection(report.totals?.blocked, { limit }));
   lines.push(...dockerSection(report));
   lines.push(...errorsSection(report.errors));
@@ -591,7 +594,7 @@ function emergencyLines(audit) {
 export function incompleteScanLines(incomplete) {
   return (incomplete ?? []).map(
     (env) =>
-      `WARNING: the scan of ${env.label} behind this plan stopped early (${env.status}), so items it did not reach were not considered; rerun with a larger --scan-budget (for example --scan-budget 5m).`
+      `WARNING: the scan of ${env.label} behind this plan stopped early (${env.status}), so items it did not reach were not considered; rerun with a larger --scan-budget (for example --scan-budget 30m).`
   );
 }
 

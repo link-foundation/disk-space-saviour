@@ -33,7 +33,7 @@ export const DEFAULTS = {
   yes: false,
   backupDir: null,
   auditDir: null,
-  scanBudget: '2m',
+  scanBudget: '10m',
   cacheDir: false,
   platformIndex: true,
 };
