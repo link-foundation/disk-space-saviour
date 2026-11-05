@@ -264,8 +264,9 @@ and produces one environment hint. Old isolation logs and sanitized upload stagi
 are moderate-tier candidates. Opam download cleanup removes its cache
 directory directly and does not invoke `opam clean` or migrate the root.
 
-Scans have a two-minute budget per filesystem environment, configurable with
-`--scan-budget 5m` (library: `scanBudget`). Progress goes to stderr, leaving
+Scans have a ten-minute budget per filesystem environment (two minutes for
+`dss emergency`, which must act quickly on a full disk), configurable with
+`--scan-budget 30m` (library: `scanBudget`). Progress goes to stderr, leaving
 JSON stdout clean. SIGINT and SIGTERM stop new work, cancel subprocesses and
 print completed findings marked `aborted`; incomplete findings remain blocked.
 The CLI exits 130 or 143 respectively. A second signal exits immediately.

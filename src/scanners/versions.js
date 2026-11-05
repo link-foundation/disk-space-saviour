@@ -1,4 +1,5 @@
 import { scanItems } from '../env/scope.js';
+import { formatBytes } from '../units.js';
 /**
  * Toolchain versions installed by version managers (nvm, pyenv, rbenv,
  * SDKMAN!, rustup, elan, ghcup, opam, swiftly, VS Code Server).
@@ -314,6 +315,29 @@ async function blockPyenvEnvironments(env, rule, dir, item) {
   }
 }
 
+/** Says which installs stay and why, since kept versions are not items. */
+function noteKeptVersions(context, rule, installs, usages, versionOf, sets) {
+  const describe = (dirs) => dirs.map(versionOf).join(', ');
+  const pinned = installs.filter((dir) => sets.referenced.has(dir));
+  const newest = installs.filter(
+    (dir) => sets.newest.has(dir) && !sets.referenced.has(dir)
+  );
+  if (pinned.length + newest.length === 0) {
+    return;
+  }
+  const bytes = [...pinned, ...newest].reduce(
+    (sum, dir) => sum + (usages.get(dir)?.bytes ?? 0),
+    0
+  );
+  const groups = [
+    pinned.length && `default or pinned by a project: ${describe(pinned)}`,
+    newest.length && `newest: ${describe(newest)}`,
+  ].filter(Boolean);
+  context.env.scanNotes?.push(
+    `${rule.manager}: kept ${formatBytes(bytes)} (${groups.join('; ')})`
+  );
+}
+
 async function ruleItems(context, rule, home, pins) {
   const { env } = context;
   const installs = await installDirs(env, rule, home);
@@ -334,6 +358,10 @@ async function ruleItems(context, rule, home, pins) {
   const newest = newestInstalls(env, rule, installs, usages);
   const versionOf = rule.versionOf ?? ((dir) => env.path.basename(dir));
   const referenced = referencedInstalls(rule, installs, refs, versionOf);
+  noteKeptVersions(context, rule, installs, usages, versionOf, {
+    newest,
+    referenced,
+  });
   const items = scanItems(context);
   for (const dir of installs) {
     const version = versionOf(dir);

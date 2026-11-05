@@ -18,7 +18,7 @@ export interface ScanOptions {
   containerRoots?: string[] | string | null;
   /** Directory depth for project search. */
   maxDepth?: number;
-  /** Time budget per filesystem environment (`2m`); incomplete findings are kept. */
+  /** Time budget per filesystem environment (`10m`; the `dss emergency` command uses `2m`); incomplete findings are kept. */
   scanBudget?: Duration;
   /** Persistent scan/index directory. Library default is false; CLI uses XDG state. */
   cacheDir?: string | false;
@@ -263,6 +263,8 @@ export interface Report {
    * Host items that share every block with an installed app (APFS clones):
    * never offered, listed so the space `du` counts for them is explained.
    */
+  /** What the scan kept or could not inspect, in plain sentences. */
+  notes?: string[];
   shared?: Array<{
     rule: string;
     path: string;

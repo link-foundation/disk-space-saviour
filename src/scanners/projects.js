@@ -107,19 +107,37 @@ async function matchRules(env, found, rules) {
     .map((o) => env.path.dirname(o.candidate.parent));
   const selfListings = await listMany(env, selfDirs);
   const grandListings = await listMany(env, [...new Set(grandDirs)]);
-  return options.map(({ candidate, rules: possible }) => ({
-    candidate,
-    rule:
-      possible.find((rule) =>
+  return options.map(({ candidate, rules: possible }) => {
+    const rule =
+      possible.find((entry) =>
         ruleAccepts(
           env,
-          rule,
+          entry,
           candidate,
           selfListings.get(candidate.path),
           grandListings.get(env.path.dirname(candidate.parent))
         )
-      ) ?? null,
-  }));
+      ) ?? null;
+    const orphan = rule
+      ? null
+      : possible.find((entry) => entry.id === 'node-modules');
+    return orphan
+      ? {
+          candidate,
+          rule: orphan,
+          orphaned: orphanReason(candidate.siblings),
+        }
+      : { candidate, rule };
+  });
+}
+
+/**
+ * A node_modules without its manifest or lockfile cannot be reinstalled, so
+ * it is never offered, but it is still reported: it can hold gigabytes.
+ */
+function orphanReason(siblings) {
+  const hasManifest = anyMatch(siblings, ['package.json']);
+  return `no ${hasManifest ? 'lockfile' : 'package.json'} beside it, so a reinstall cannot re-create it`;
 }
 
 async function rootCandidates(env, roots) {
@@ -231,7 +249,7 @@ async function addBlockers(context, item, requireClean) {
   }
 }
 
-async function projectItem(context, { candidate, rule }, usage) {
+async function projectItem(context, { candidate, rule, orphaned }, usage) {
   const { env } = context;
   const project = rule.parentName
     ? env.path.dirname(candidate.parent)
@@ -250,6 +268,9 @@ async function projectItem(context, { candidate, rule }, usage) {
     ...projectTier(rule),
     checks: { busy: rule.busy ?? [], cwd: project, mtime: true },
   });
+  if (orphaned) {
+    block(item, orphaned);
+  }
   if (rule.id === 'node-modules') {
     block(
       item,
