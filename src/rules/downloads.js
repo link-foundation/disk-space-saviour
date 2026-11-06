@@ -74,6 +74,36 @@ export const DOWNLOAD_RULES = [
     busy: ['ChatGPT Atlas', 'Codex'],
   },
   {
+    id: 'playwright-mcp-profile-caches',
+    ecosystem: 'browsers',
+    description: 'browser caches inside Playwright MCP profiles',
+    // These profiles persist on purpose and hold cookies and saved logins,
+    // so only the cache leaves match, never a profile itself.
+    paths: [
+      '~/Library/Caches/ms-playwright-mcp/*',
+      '~/Library/Caches/ms-playwright/mcp-chrome-*',
+      '~/.cache/ms-playwright/mcp-*',
+      '{LOCALAPPDATA}/ms-playwright/mcp-*',
+    ].flatMap((profile) =>
+      CACHE_LEAVES.map((leaf) => `${profile}/Default/${leaf}`)
+    ),
+    minAge: 'stale',
+    busy: ['playwright-mcp', 'mcp-server-playwright'],
+  },
+  {
+    id: 'pnpm-metadata-cache',
+    ecosystem: 'javascript',
+    description: 'pnpm registry metadata, fetched again on the next install',
+    // Only registry responses: the package store and dlx have their own rules.
+    paths: [
+      '~/Library/Caches/pnpm/metadata*',
+      '~/.cache/pnpm/metadata*',
+      '{LOCALAPPDATA}/pnpm-cache/metadata*',
+    ],
+    minAge: 'stale',
+    busy: ['pnpm'],
+  },
+  {
     id: 'electron-downloads',
     ecosystem: 'javascript',
     description: 'Electron and electron-builder downloaded archives',
