@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.0
+
+### Minor Changes
+
+- 23a05e8: Find two more regenerable caches: the cache folders inside Playwright MCP browser profiles, whose cookies and saved logins are never touched, and pnpm's registry metadata cache.
+
 ## 0.24.0
 
 ### Minor Changes
