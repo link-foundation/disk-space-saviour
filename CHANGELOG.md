@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.1
+
+### Patch Changes
+
+- b4ab903: Recognize abandoned hive-mind log upload staging directories with the existing moderate-tier activity and liveness checks. Offer stale GitHub CLI run-log archives at the safe tier, protect them while gh runs, and include the Windows cache layout while preserving unrelated cache and authentication files.
+
 ## 0.25.0
 
 ### Minor Changes
