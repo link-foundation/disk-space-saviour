@@ -148,6 +148,14 @@ Desktop and Warp staged updates (kept while the app runs), Zed language
 servers, tree-sitter toolchains, Codex plugin staging, the Clang module cache
 Crashpad reports (processed ones, and unsent ones after 30 days), rotated app
 logs in `~/Library/Logs` (`warp.log.old.2`) and the GitHub CLI run-log cache.
+GitHub CLI `run-log-*.zip` archives are safe-tier candidates, aggregated per
+home under `~/.cache/gh` (or `$XDG_CACHE_HOME/gh`) and
+`%LOCALAPPDATA%/GitHub CLI` on Windows. Only stale archive files are matched;
+configuration and authentication files are kept, and a running `gh` blocks
+cleanup. Sanitized upload staging in `{TMP}/hive-mind-log-upload-*` and the
+older `log-tmp-hive-mind-log-upload-*-sanitized-*` and
+`log-home-box-hive-telegram-bot-*` layouts remains moderate-tier. Both rules
+check the activity window and open files again before deletion.
 Telegram pure caches, Safari/WebKit,
 Chromium code/GPU/Dawn/service-worker caches and marker-validated Electron
 caches are included. Old Playwright browser revisions are kept while a
