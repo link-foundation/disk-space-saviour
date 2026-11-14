@@ -236,9 +236,14 @@ export const DOWNLOAD_RULES = [
     ecosystem: 'system',
     description:
       'GitHub CLI cached workflow run logs: gh downloads them again while GitHub keeps them',
-    tier: 'moderate',
+    tier: 'safe',
     aggregate: true,
-    paths: ['~/.cache/gh/run-log-*.zip'],
+    fileOnly: true,
+    paths: [
+      '~/.cache/gh/run-log-*.zip',
+      '{LOCALAPPDATA}/GitHub CLI/run-log-*.zip',
+    ],
     minAge: 'stale',
+    busy: ['gh'],
   },
 ];

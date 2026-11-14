@@ -64,11 +64,7 @@ const homeLocations = [
   ['chrome-http-caches', `${support}/Google/Chrome/extensions_crx_cache/x.crx`],
   ['vscode-caches', `${support}/Code/WebStorage/1/CacheStorage/x`],
 ];
-const MODERATE = new Set([
-  'crashpad-reports',
-  'crashpad-pending-reports',
-  'gh-run-log-cache',
-]);
+const MODERATE = new Set(['crashpad-reports', 'crashpad-pending-reports']);
 const tmpLocations = [
   [
     'chromium-code-sign-clones',

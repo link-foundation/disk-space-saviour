@@ -496,6 +496,7 @@ export const OTHER_RULES = [
     description: 'old sanitized log upload staging data',
     tier: 'moderate',
     paths: [
+      '{TMP}/hive-mind-log-upload-*',
       '{TMP}/log-tmp-hive-mind-log-upload-*-sanitized-*',
       '{TMP}/log-home-box-hive-telegram-bot-*',
     ],
