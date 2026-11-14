@@ -163,12 +163,15 @@ describe('GitHub CLI run log archives', () => {
         const item = report.items.find((entry) =>
           entry.paths.includes(paths[0])
         );
-        expect(item.paths.sort()).toEqual(paths.sort());
+        expect([...item.paths].sort()).toEqual([...paths].sort());
         expect(item.tier).toBe('safe');
         expect(item.blockers).toEqual([]);
-        expect(item.action.paths.sort()).toEqual(paths.sort());
+        expect([...item.action.paths].sort()).toEqual([...paths].sort());
       }
-      await cleanup(report, env);
+      const audit = await cleanup(report, env);
+      expect(
+        audit.entries.map(({ status, reason }) => ({ status, reason }))
+      ).toEqual(homes.map(() => ({ status: 'removed', reason: null })));
       expect(archives.flat().some((file) => existsSync(file))).toBe(false);
       expect([...kept, ...fresh].every((file) => existsSync(file))).toBe(true);
     }));

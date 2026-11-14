@@ -86,7 +86,12 @@ node --test --test-timeout=30000 tests/upload-and-run-log-caches.test.js \
   tests/download-caches.test.js tests/issue-14-caches.test.js
 ```
 
-Local result: all 44 focused tests pass. ESLint passes for changed JavaScript
+Local result: all 44 focused tests pass on Node.js and Bun. ESLint passes for changed JavaScript
 and the reproducer; Prettier formats all changed files. CI supplies the full
 runtime/OS matrix, Docker integration, and repository-wide checks. Current
 commit CI results are recorded in PR 58 when final verification finishes.
+
+The first CI run exposed an in-place sort in the new test's path comparison.
+Bun's directory order made that comparison alter the sealed scan report and
+trigger report revalidation before cleanup. Comparing copies preserves the
+report; the test also checks both removal audit entries and their reasons.
